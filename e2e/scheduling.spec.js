@@ -2,14 +2,14 @@ import { expect } from '@playwright/test';
 import { test } from './fixtures.mjs';
 
 async function preview(page, description) {
-  await page.getByLabel('Describe the lesson').fill(description);
-  await page.getByRole('button', { name: 'Create AI preview' }).click();
-  await expect(page.getByRole('complementary', { name: 'AI schedule preview' })).toContainText('Unscheduled draft');
+  await page.getByLabel('描述课程').fill(description);
+  await page.getByRole('button', { name: '创建 AI 预览' }).click();
+  await expect(page.getByRole('complementary', { name: 'AI 排课预览' })).toContainText('未排课草稿');
 }
 
 async function previewAndConfirm(page, description) {
   await preview(page, description);
-  await page.getByRole('button', { name: 'Confirm reservation' }).click();
+  await page.getByRole('button', { name: '确认预约' }).click();
 }
 
 test('teacher confirms an individual AI preview through the Express API and PostgreSQL', async ({ page }) => {
@@ -17,9 +17,9 @@ test('teacher confirms an individual AI preview through the Express API and Post
 
   await previewAndConfirm(page, 'e2e individual lesson');
 
-  await expect(page.getByRole('status')).toHaveText('Reservation confirmed and added to the weekly schedule.');
+  await expect(page.getByRole('status')).toHaveText('预约已确认，并已加入每周课表。');
   await expect(page.getByRole('button', { name: /Avery Rivera/ })).toBeVisible();
-  await expect(page.getByRole('table', { name: 'Student lesson ledger' }).getByRole('row').filter({ hasText: 'Avery Rivera (Demo Student)' })).toContainText('1');
+  await expect(page.getByRole('table', { name: '学生课时台账' }).getByRole('row').filter({ hasText: 'Avery Rivera (Demo Student)' })).toContainText('1');
 });
 
 test('teacher confirms a same-grade group lesson through the backend validation path', async ({ page }) => {
@@ -27,20 +27,20 @@ test('teacher confirms a same-grade group lesson through the backend validation 
 
   await previewAndConfirm(page, 'e2e same-grade group lesson');
 
-  await expect(page.getByRole('status')).toHaveText('Reservation confirmed and added to the weekly schedule.');
+  await expect(page.getByRole('status')).toHaveText('预约已确认，并已加入每周课表。');
   await expect(page.getByRole('button', { name: /Avery Rivera.*Rowan Rivera/ })).toBeVisible();
-  await expect(page.getByRole('table', { name: 'Student lesson ledger' }).getByRole('row').filter({ hasText: 'Rowan Rivera (Demo Student)' })).toContainText('1');
+  await expect(page.getByRole('table', { name: '学生课时台账' }).getByRole('row').filter({ hasText: 'Rowan Rivera (Demo Student)' })).toContainText('1');
 });
 
 test('teacher receives the real TIME_CONFLICT rejection without adding a second lesson', async ({ page }) => {
   await page.goto('/');
 
   await previewAndConfirm(page, 'e2e conflict baseline lesson');
-  await expect(page.getByRole('status')).toHaveText('Reservation confirmed and added to the weekly schedule.');
+  await expect(page.getByRole('status')).toHaveText('预约已确认，并已加入每周课表。');
 
   await previewAndConfirm(page, 'e2e conflicting lesson');
 
-  await expect(page.getByRole('alert')).toContainText('Reservation not saved (TIME_CONFLICT)');
+  await expect(page.getByRole('alert')).toContainText('预约未保存（TIME_CONFLICT）');
   const schedule = await page.request.get('/api/teacher/schedule', { headers: { 'x-demo-user': 'teacher-demo' } });
   expect(schedule.ok()).toBeTruthy();
   const conflictSlot = (await schedule.json()).filter(({ startsAt }) => startsAt === '2032-01-07T10:00:00.000Z');
@@ -52,7 +52,7 @@ test('teacher receives the real NO_CREDITS rejection without adding a lesson', a
 
   await previewAndConfirm(page, 'e2e zero credit lesson');
 
-  await expect(page.getByRole('alert')).toContainText('Reservation not saved (NO_CREDITS)');
+  await expect(page.getByRole('alert')).toContainText('预约未保存（NO_CREDITS）');
   await expect(page.getByRole('button', { name: /Zero Credit/ })).toHaveCount(0);
 });
 
@@ -65,8 +65,8 @@ test('keyboard users stay in the lesson dialog and return to its trigger after c
   await page.keyboard.press('Enter');
 
   const dialog = page.getByRole('dialog', { name: /Avery Rivera/ });
-  const close = dialog.getByRole('button', { name: 'Close lesson details' });
-  const complete = dialog.getByRole('button', { name: 'Mark completed' });
+  const close = dialog.getByRole('button', { name: '关闭课程详情' });
+  const complete = dialog.getByRole('button', { name: '标记为已完成' });
   await expect(dialog).toHaveAttribute('aria-modal', 'true');
   await expect(close).toBeFocused();
 
@@ -79,6 +79,6 @@ test('keyboard users stay in the lesson dialog and return to its trigger after c
   await expect(trigger).toBeFocused();
 
   await trigger.click();
-  await dialog.getByRole('button', { name: 'Mark completed' }).click();
-  await expect(page.getByRole('status')).toHaveText('Lesson completed.');
+  await dialog.getByRole('button', { name: '标记为已完成' }).click();
+  await expect(page.getByRole('status')).toHaveText('课程已完成。');
 });

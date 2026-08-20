@@ -21,10 +21,10 @@ onMounted(() => closeButton.value?.focus());
 <template>
   <div class="drawer-backdrop" @mousedown.self="emit('close')">
     <section ref="dialog" class="lesson-drawer" role="dialog" aria-modal="true" aria-labelledby="lesson-dialog-title" @keydown="trapFocus">
-      <button ref="closeButton" class="drawer-close" aria-label="Close lesson details" @click="emit('close')">×</button>
-      <p class="preview-stamp">Scheduled lesson</p><h2 id="lesson-dialog-title">{{ participants(lesson) }}</h2>
-      <p>{{ formatDate(lesson.startsAt) }} · {{ lesson.durationMinutes }} minutes</p>
-      <div class="preview-actions"><button class="button secondary" :disabled="loading" @click="emit('cancel')">Cancel reservation</button><button class="button confirm" :disabled="loading" @click="emit('complete')">Mark completed</button></div>
+      <button ref="closeButton" class="drawer-close" aria-label="关闭课程详情" @click="emit('close')">×</button>
+      <p class="preview-stamp">已排课程</p><h2 id="lesson-dialog-title">{{ participants(lesson) }}</h2>
+      <p>{{ formatDate(lesson.startsAt) }} · {{ lesson.durationMinutes }} 分钟</p>
+      <div class="preview-actions"><button class="button secondary" :disabled="loading" @click="emit('cancel')">取消预约</button><button class="button confirm" :disabled="loading" @click="emit('complete')">标记为已完成</button></div>
     </section>
   </div>
 </template>

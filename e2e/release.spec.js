@@ -16,11 +16,13 @@ function parseRgb(value) {
 test('teacher workspace exposes labeled landmarks, a visible focus indicator, and readable critical colors', async ({ page }) => {
   await page.goto('/');
 
-  await expect(page.getByRole('navigation', { name: 'Workspace' })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Weekly lesson schedule' })).toBeVisible();
-  await expect(page.getByLabel('Describe the lesson')).toBeVisible();
+  await expect(page).toHaveTitle('AI 排课助手');
+  await expect(page.getByRole('heading', { name: '每周授课节奏' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '工作区' })).toBeVisible();
+  await expect(page.getByRole('region', { name: '每周课程表' })).toBeVisible();
+  await expect(page.getByLabel('描述课程')).toBeVisible();
 
-  const parentDashboard = page.getByRole('button', { name: 'Parent dashboard' });
+  const parentDashboard = page.getByRole('button', { name: '家长中心' });
   await page.keyboard.press('Tab');
   await page.keyboard.press('Tab');
   await page.keyboard.press('Tab');
@@ -33,7 +35,7 @@ test('teacher workspace exposes labeled landmarks, a visible focus indicator, an
   expect(focus.width).toBe('3px');
   expect(focus.color).toBe('rgb(45, 108, 223)');
 
-  const contrast = await page.getByRole('button', { name: 'Teacher workbench' }).evaluate((element) => {
+  const contrast = await page.getByRole('button', { name: '教师工作台' }).evaluate((element) => {
     const styles = getComputedStyle(element);
     return { foreground: styles.color, background: styles.backgroundColor };
   });
@@ -47,10 +49,10 @@ test.describe('mobile release checks', () => {
 
   test('parent workspace remains usable without document-level horizontal scrolling on a mobile viewport', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: 'Parent dashboard' }).click();
+    await page.getByRole('button', { name: '家长中心' }).click();
 
-    await expect(page.getByRole('heading', { name: 'Family lesson desk' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Add a lesson package' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '家庭课程中心' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '添加课程套餐' })).toBeVisible();
     expect(await page.locator('body').evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
   });
 });
