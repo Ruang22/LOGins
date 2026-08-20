@@ -5,7 +5,9 @@ export function createRoleSession() {
 
   return {
     role,
-    select: (next) => { role.value = next; },
+    select: (next) => {
+      if (next === 'teacher' || next === 'parent') role.value = next;
+    },
     reset: () => { role.value = null; },
   };
 }
