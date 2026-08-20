@@ -17,10 +17,10 @@ function addDays(date, count) { const result = new Date(date); result.setDate(re
 function dateKey(value) { const date = new Date(value); return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`; }
 function timeKey(value) { const date = new Date(value); return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`; }
 const weekStart = ref(startOfWeek(new Date()));
-const weekDates = computed(() => Array.from({ length: 5 }, (_, i) => addDays(weekStart.value, i)));
+const weekDates = computed(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart.value, i)));
 const scheduled = computed(() => teacher.value.lessons.filter((lesson) => lesson.status === 'scheduled'));
 const scheduleItems = computed(() => {
-  const starts = weekStart.value.getTime(); const ends = addDays(weekStart.value, 5).getTime();
+  const starts = weekStart.value.getTime(); const ends = addDays(weekStart.value, 7).getTime();
   const lessons = scheduled.value.filter((lesson) => { const start = new Date(lesson.startsAt).getTime(); return start >= starts && start < ends; }).map((lesson) => ({ ...lesson, key: lesson.id, label: participants(lesson), draft: false }));
   const draft = teacher.value.suggestion; const draftStart = draft && new Date(draft.startAt).getTime();
   return draft && draftStart >= starts && draftStart < ends ? [...lessons, { ...draft, key: 'ai-preview', label: draft.courseName, draft: true }] : lessons;

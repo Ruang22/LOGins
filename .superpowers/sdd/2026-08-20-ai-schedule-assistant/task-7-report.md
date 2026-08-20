@@ -28,3 +28,9 @@ Install Node.js, run `npm install`, then execute the client component test and p
 - Extracted the lesson drawer into an accessible modal: it receives initial focus, traps Tab/Shift+Tab, closes on Escape or backdrop dismissal, and restores focus to the lesson trigger.
 - Added a focused modal component test for initial focus and Escape behavior.
 - Re-ran static validation (`git diff --check` and package JSON parse): passed. Client test/build commands remain blocked because Node.js/npm are unavailable on `PATH`.
+
+## Follow-up: Weekend coverage
+
+- Expanded the weekly board to Monday through Sunday and widened its grid for seven daily columns.
+- Updated the lesson and AI-preview range to `[weekStart, weekStart + 7 days)`, so server-valid Saturday and Sunday starts appear in their own date and minute-precise slot.
+- A runtime weekend component test could not be run because Node.js/npm are unavailable on `PATH`; the existing test runner remains configured for it once the toolchain is installed.
