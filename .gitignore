@@ -9,3 +9,4 @@ playwright-report/
 !.env.test.example
 *.log
 postgres-data/
+.worktrees/
