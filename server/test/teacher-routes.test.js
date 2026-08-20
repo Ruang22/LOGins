@@ -51,6 +51,7 @@ test('teacher creates, views, and completes a lesson through teacher routes', as
     .set('x-demo-user', 'teacher-demo')
     .expect(200);
   assert.ok(students.body.some(({ id }) => id === student.id));
+  assert.ok(students.body.every((listedStudent) => !Object.hasOwn(listedStudent, 'parentId')));
 
   const created = await request(app)
     .post('/api/teacher/lessons')

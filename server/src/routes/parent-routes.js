@@ -3,7 +3,7 @@ import { prisma } from '../db/client.js';
 import { requireRole } from '../middleware/demo-auth.js';
 
 const lessonInclude = {
-  participants: {
+  lessonLinks: {
     select: {
       studentId: true,
       lesson: {

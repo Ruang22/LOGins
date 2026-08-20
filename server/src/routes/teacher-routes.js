@@ -42,7 +42,17 @@ export function createTeacherRouter() {
 
   router.get('/students', async (_req, res, next) => {
     try {
-      const students = await prisma.student.findMany({ orderBy: [{ grade: 'asc' }, { name: 'asc' }] });
+      const students = await prisma.student.findMany({
+        orderBy: [{ grade: 'asc' }, { name: 'asc' }],
+        select: {
+          id: true,
+          name: true,
+          grade: true,
+          totalCredits: true,
+          attendedCredits: true,
+          reservedCredits: true,
+        },
+      });
       res.json(students);
     } catch (error) {
       next(error);
