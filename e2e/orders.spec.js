@@ -11,7 +11,8 @@ test('parent completes a visibly simulated package order through Express and see
 
   await expect(page.getByRole('status')).toContainText('Simulated payment complete');
   await expect(page.getByText('Simulated payment complete')).toBeVisible();
-  await expect(page.locator('.credit-balance strong')).toHaveText('22');
+  await expect(page.locator('.child-summary dd').first()).toHaveText('22');
+  await expect(page.locator('.credit-balance strong')).toHaveText('19');
 });
 
 test('parent cannot access a supplied foreign child id and the dashboard cannot render that record', async ({ page }) => {

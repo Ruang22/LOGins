@@ -28,3 +28,10 @@
 ### Exact unrun blocker
 
 Docker Desktop is installed but unavailable in this environment: `docker version` returns `Error response from daemon: Docker Desktop is unable to start`. With `DATABASE_URL=postgresql://schedule_app:change-me-for-local-development@127.0.0.1:5433/schedule_assistant_e2e`, `prisma migrate deploy` reaches the intended datasource and fails with `Error: Schema engine error:` because the dedicated PostgreSQL service cannot be started. Consequently, no PostgreSQL-backed server suite or Playwright browser run is reported as passing. Playwright Chromium also still needs `npx playwright install chromium` before a browser run.
+
+## Fix round 2
+
+- Corrected the simulated-payment UI assertion: the fixture starts with 12 purchased and 3 attended credits, so payment makes the Purchased value 22 and Available value 19 (`22 - 3 - 0`), not 22 available.
+- Added the explicit Purchased assertion alongside the corrected Available assertion, so the test proves both the persisted increment and the displayed credit calculation.
+- `node --check e2e/orders.spec.js` passed.
+- `npx playwright test --list --grep "simulated package order"` passed and discovered the corrected real-stack E2E test. The database-backed browser test was not run because the Docker Desktop/PostgreSQL blocker above remains unchanged.
