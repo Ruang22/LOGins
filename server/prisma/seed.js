@@ -1,4 +1,6 @@
 import { PrismaClient } from '@prisma/client';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const teacher = {
   name: 'Maya Chen (Demo Teacher)',
@@ -59,7 +61,7 @@ export async function seedDatabase(prisma) {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   const prisma = new PrismaClient();
 
   try {

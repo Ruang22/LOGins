@@ -1,17 +1,10 @@
-import { after, before, test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
 import { seedDatabase } from '../prisma/seed.js';
+import './support/test-database.js';
 
 const prisma = new PrismaClient();
-
-before(async () => {
-  await prisma.order.deleteMany();
-  await prisma.lessonParticipant.deleteMany();
-  await prisma.lesson.deleteMany();
-  await prisma.student.deleteMany();
-  await prisma.user.deleteMany();
-});
 
 after(async () => {
   await prisma.$disconnect();
