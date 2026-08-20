@@ -46,13 +46,13 @@ export async function createOrder(input, parent) {
 export async function confirmSimulationOrder(orderId, actorInput) {
   const actor = requireActor(actorInput);
   if (typeof orderId !== 'string' || !orderId) throw new OrderError('ORDER_NOT_FOUND');
-  if (!['parent', 'teacher'].includes(actor.role)) throw new OrderError('FORBIDDEN');
+  if (actor.role !== 'parent') throw new OrderError('FORBIDDEN');
 
   return prisma.$transaction(async (tx) => {
     await lock(tx, `order:${orderId}`);
     const order = await tx.order.findUnique({ where: { id: orderId } });
     if (!order) throw new OrderError('ORDER_NOT_FOUND');
-    if (actor.role === 'parent' && order.parentId !== actor.id) throw new OrderError('FORBIDDEN');
+    if (order.parentId !== actor.id) throw new OrderError('FORBIDDEN');
     if (order.status !== 'pending') throw new OrderError('ORDER_NOT_PENDING');
 
     const paidOrder = await tx.order.update({ where: { id: order.id }, data: { status: 'paid' } });

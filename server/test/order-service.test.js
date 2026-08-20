@@ -12,6 +12,9 @@ const createdIds = { users: [], students: [], orders: [] };
 
 async function createFixture() {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const teacher = await prisma.user.create({
+    data: { name: `Order Teacher ${suffix}`, email: `order-teacher-${suffix}@example.test`, role: 'teacher' },
+  });
   const parent = await prisma.user.create({
     data: { name: `Order Parent ${suffix}`, email: `order-parent-${suffix}@example.test`, role: 'parent' },
   });
@@ -21,9 +24,9 @@ async function createFixture() {
   const student = await prisma.student.create({
     data: { parentId: parent.id, name: `Order Student ${suffix}`, grade: 8, totalCredits: 2 },
   });
-  createdIds.users.push(parent.id, otherParent.id);
+  createdIds.users.push(teacher.id, parent.id, otherParent.id);
   createdIds.students.push(student.id);
-  return { parent, otherParent, student };
+  return { teacher, parent, otherParent, student };
 }
 
 after(async () => {
@@ -68,4 +71,16 @@ test('a parent cannot create or confirm an order for another parent student', as
     confirmSimulationOrder(order.id, otherParent),
     (error) => error.code === 'FORBIDDEN',
   );
+});
+
+test('a teacher cannot confirm a parent simulated order', async () => {
+  const { teacher, parent, student } = await createFixture();
+  const order = await createOrder({ studentId: student.id, packageName: 'Demo 10 Lesson Package', creditQuantity: 10, amountCents: 50000 }, parent);
+  createdIds.orders.push(order.id);
+
+  await assert.rejects(
+    confirmSimulationOrder(order.id, teacher),
+    (error) => error.code === 'FORBIDDEN',
+  );
+  assert.equal((await prisma.student.findUniqueOrThrow({ where: { id: student.id } })).totalCredits, 2);
 });

@@ -53,3 +53,11 @@ test('a parent is forbidden from reviewing teacher orders', async () => {
     .set('x-demo-user', 'parent-demo')
     .expect(403, { code: 'FORBIDDEN' });
 });
+
+test('teacher order review cannot confirm a simulated payment', async () => {
+  await seedDatabase(prisma);
+  await request(createApp())
+    .patch('/api/teacher/orders/not-an-order/confirm')
+    .set('x-demo-user', 'teacher-demo')
+    .expect(404);
+});

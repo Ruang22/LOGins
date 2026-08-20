@@ -50,13 +50,5 @@ export function createTeacherOrderRouter() {
     }
   });
 
-  router.patch('/orders/:id/confirm', async (req, res, next) => {
-    try {
-      const order = await confirmSimulationOrder(req.params.id, req.demoUser);
-      res.json({ ...order, paymentMode: 'simulation' });
-    } catch (error) {
-      if (!respondToOrderError(error, res)) next(error);
-    }
-  });
   return router;
 }
