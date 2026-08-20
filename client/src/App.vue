@@ -3,13 +3,10 @@ import { computed, nextTick, ref } from 'vue';
 import { api } from './api.js';
 import AiSchedulePreview from './components/AiSchedulePreview.vue';
 import LessonDrawer from './components/LessonDrawer.vue';
+import RoleGate from './components/RoleGate.vue';
 import { createRoleSession } from './state/role-session.js';
 
 const { role, select: selectRole, reset: resetRole } = createRoleSession();
-const RoleGate = {
-  emits: ['select'],
-  template: `<section class="role-gate" data-testid="role-gate" aria-label="选择身份"><p>请选择您的身份</p><button data-testid="choose-teacher" @click="$emit('select', 'teacher')">我是教师</button><button data-testid="choose-parent" @click="$emit('select', 'parent')">我是家长</button></section>`,
-};
 const loading = ref(false); const error = ref(''); const notice = ref('');
 const teacher = ref({ lessons: [], students: [], orders: [], suggestion: null, draft: '' });
 const parent = ref({ data: null, order: null }); const selectedLesson = ref(null); const lessonTrigger = ref(null);
@@ -57,8 +54,10 @@ function changeRole() { resetRole(); notice.value = ''; error.value = ''; }
 </script>
 
 <template>
-  <RoleGate v-if="!role" @select="select" />
-  <main v-else class="app-shell" :inert="selectedLesson ? '' : undefined" :aria-hidden="selectedLesson ? 'true' : undefined">
+  <Transition name="role-depart">
+    <RoleGate v-if="!role" @select="select" />
+  </Transition>
+  <main v-if="role" class="app-shell" :inert="selectedLesson ? '' : undefined" :aria-hidden="selectedLesson ? 'true' : undefined">
     <header class="topbar"><a class="wordmark" href="#" @click.prevent="changeRole">Lessonline<span>AI</span></a><nav aria-label="工作区"><button :class="{ active: role === 'teacher' }" @click="select('teacher')">教师工作台</button><button :class="{ active: role === 'parent' }" @click="select('parent')">家长中心</button><button @click="changeRole">切换身份</button></nav><span class="demo-label">合成演示数据</span></header>
     <p v-if="error" class="status error" role="alert">{{ error }}</p><p v-if="notice" class="status notice" role="status">{{ notice }}</p>
     <section v-if="role === 'teacher'" class="teacher-workbench" data-testid="teacher-shell"><div class="workbench-heading"><div><h1 ref="workbenchDestination" tabindex="-1" data-testid="workbench-destination">每周授课节奏</h1><p>AI 草稿只有在您审核确认后，才会更改学生的课程安排或课时余额。</p></div><button class="button quiet" :disabled="loading" @click="loadTeacher">刷新课表</button></div>
