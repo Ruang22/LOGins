@@ -11,7 +11,7 @@ const prisma = new PrismaClient();
 const createdIds = { users: [], students: [], lessons: [] };
 
 function at(hour, minute = 0) {
-  return new Date(Date.UTC(2030, 0, 2, hour, minute));
+  return new Date(Date.UTC(2030, 0, 2, hour, minute)).toISOString();
 }
 
 async function createFixture({ grades = [7], credits = [2] } = {}) {
@@ -92,11 +92,15 @@ test('rejects overlapping lessons for the same teacher', async () => {
   );
 });
 
-test('rejects invalid or non-minute start times', async () => {
+test('rejects invalid, non-ISO, or non-minute start times', async () => {
   const { actor, students: [student] } = await createFixture();
 
   await assert.rejects(
-    createReservation({ studentIds: [student.id], startAt: new Date('2030-01-02T12:00:30Z') }, actor),
+    createReservation({ studentIds: [student.id], startAt: 'January 2, 2030 12:00' }, actor),
+    (error) => error.code === 'INVALID_TIME',
+  );
+  await assert.rejects(
+    createReservation({ studentIds: [student.id], startAt: '2030-01-02T12:00:30Z' }, actor),
     (error) => error.code === 'INVALID_TIME',
   );
 });
@@ -110,7 +114,10 @@ test('completion transfers reserved credits to attended credits', async () => {
   const balances = await prisma.student.findMany({ where: { id: { in: students.map(({ id }) => id) } } });
 
   assert.equal(completed.status, 'completed');
-  assert.deepEqual(balances.map(({ reservedCredits, attendedCredits }) => [reservedCredits, attendedCredits]).sort(), [[0, 1], [0, 1]]);
+  assert.deepEqual(
+    balances.map(({ totalCredits, reservedCredits, attendedCredits }) => [totalCredits, reservedCredits, attendedCredits]).sort(),
+    [[2, 0, 1], [2, 0, 1]],
+  );
 });
 
 test('cancellation releases reserved credits without attendance', async () => {

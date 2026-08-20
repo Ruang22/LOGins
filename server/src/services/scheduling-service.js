@@ -1,6 +1,7 @@
 import { prisma } from '../db/client.js';
 
 const LESSON_DURATION_MINUTES = 60;
+const MINUTE_ISO_8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::00(?:\.000)?)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 class SchedulingError extends Error {
   constructor(code, message = code) {
@@ -16,7 +17,10 @@ function requireActorId(actor) {
 }
 
 function parseMinute(startAt) {
-  const parsed = startAt instanceof Date ? new Date(startAt) : new Date(startAt);
+  if (typeof startAt !== 'string' || !MINUTE_ISO_8601.test(startAt)) {
+    throw new SchedulingError('INVALID_TIME', 'A lesson must use a minute-precise ISO 8601 time with an explicit offset.');
+  }
+  const parsed = new Date(startAt);
   if (Number.isNaN(parsed.getTime()) || parsed.getUTCSeconds() !== 0 || parsed.getUTCMilliseconds() !== 0) {
     throw new SchedulingError('INVALID_TIME', 'A lesson must start on a whole minute.');
   }
