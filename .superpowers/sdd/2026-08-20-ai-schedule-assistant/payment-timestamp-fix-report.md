@@ -1,5 +1,12 @@
 # Payment timestamp fix
 
+> Superseded before release by the migration-history correction. The
+> `updatedAt` proxy described below is not trustworthy and migration
+> `20260820030000` has been removed. Historical paid orders now retain
+> `paidAt = NULL`; only new confirmations populate it. This repository had only
+> disposable local synthetic data and its demo databases were reset. Any real
+> database that applied the old history requires manual review.
+
 Date: 2026-08-20
 
 ## Change

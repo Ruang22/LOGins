@@ -31,6 +31,19 @@ The initial migration is committed at
 existing development database, use `npx prisma migrate deploy` to apply the
 committed migration instead of creating another initial migration.
 
+This pre-release demo deliberately keeps `paidAt` as `NULL` when payment time
+is unknown for an order that predates the payment-detail migration. The
+migration may derive the synthetic catalog `packageId` and default
+`paymentMode`, but it must not derive a payment time from `createdAt`,
+`updatedAt`, status, or a cutoff. Only a new simulated-payment confirmation
+writes a real `paidAt` value.
+
+Migration history was corrected before release because every database in this
+repository contains disposable local synthetic data. Reset those local demo
+databases before deploying the corrected history. If a database with real data
+ever received the superseded timestamp migrations, do not reset it and do not
+guess at payment time: preserve it for manual record-by-record review.
+
 The seed integration test is explicitly isolated from the development database.
 Copy `server/.env.test.example` to `server/.env.test`, create the disposable
 `schedule_assistant_test` database, apply the committed migrations with that

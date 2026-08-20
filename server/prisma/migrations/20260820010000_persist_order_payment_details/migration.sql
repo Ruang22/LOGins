@@ -9,4 +9,6 @@ SET "packageId" = CASE
 END;
 ALTER TABLE "Order" ALTER COLUMN "packageId" SET NOT NULL;
 ALTER TABLE "Order" ADD COLUMN "paymentMode" "PaymentMode" NOT NULL DEFAULT 'simulation';
+-- Historical paid orders have no trustworthy payment-transition timestamp.
+-- Keep paidAt nullable and unknown. Only a new confirmation may populate it.
 ALTER TABLE "Order" ADD COLUMN "paidAt" TIMESTAMP(3);

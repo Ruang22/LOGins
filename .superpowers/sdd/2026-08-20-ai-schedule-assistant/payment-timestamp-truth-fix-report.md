@@ -1,5 +1,13 @@
 # Payment timestamp truth fix
 
+> Superseded before release by the migration-history correction. Predicate
+> filters cannot identify every fabricated timestamp or preserve every genuine
+> one, so migration `20260820040000` has been removed along with
+> `20260820030000`. Fresh history leaves historical paid orders at
+> `paidAt = NULL`; only new confirmations populate it. This repository had only
+> disposable local synthetic data and its demo databases were reset. Any real
+> database that applied the old history requires manual review.
+
 Date: 2026-08-20
 
 ## Ruling

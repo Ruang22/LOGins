@@ -17,8 +17,4 @@ SET
   "amountCents" = CASE
     WHEN "packageId" = 'demo-20' THEN 92000
     ELSE 50000
-  END,
-  "paidAt" = CASE
-    WHEN "status" = 'paid' AND "paidAt" IS NULL THEN "createdAt"
-    ELSE "paidAt"
   END;
