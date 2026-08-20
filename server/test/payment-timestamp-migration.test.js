@@ -10,7 +10,7 @@ after(async () => {
   await prisma.$disconnect();
 });
 
-test('corrective migration uses updatedAt for legacy paid orders, preserving new paidAt values', async () => {
+test('final correction marks ambiguous historical paidAt values unknown while preserving post-cutoff timestamps', async () => {
   const suffix = Date.now().toString();
   const parent = await prisma.user.create({
     data: { name: `Migration Parent ${suffix}`, email: `migration-${suffix}@example.com`, role: 'parent' },
@@ -20,7 +20,7 @@ test('corrective migration uses updatedAt for legacy paid orders, preserving new
   });
   const legacyCreatedAt = new Date('2026-01-10T10:00:00.000Z');
   const legacyUpdatedAt = new Date('2026-01-10T10:05:00.000Z');
-  const legacy = await prisma.order.create({
+  const legacyBackfill = await prisma.order.create({
     data: {
       parentId: parent.id,
       studentId: student.id,
@@ -33,9 +33,9 @@ test('corrective migration uses updatedAt for legacy paid orders, preserving new
       updatedAt: legacyUpdatedAt,
     },
   });
-  const newerPaidAt = new Date('2026-08-20T03:00:00.000Z');
-  const newerCreatedAt = new Date('2026-08-20T02:30:00.000Z');
-  const newer = await prisma.order.create({
+  const collisionCreatedAt = new Date('2026-01-11T10:00:00.000Z');
+  const collisionUpdatedAt = new Date('2026-01-11T10:05:00.000Z');
+  const legacyImmediatePayment = await prisma.order.create({
     data: {
       parentId: parent.id,
       studentId: student.id,
@@ -44,26 +44,52 @@ test('corrective migration uses updatedAt for legacy paid orders, preserving new
       creditQuantity: 10,
       amountCents: 50000,
       status: 'paid',
-      paidAt: newerPaidAt,
-      createdAt: newerCreatedAt,
-      updatedAt: newerPaidAt,
+      paidAt: collisionCreatedAt,
+      createdAt: collisionCreatedAt,
+      updatedAt: collisionUpdatedAt,
+    },
+  });
+  const postCutoffPaidAt = new Date('2026-08-20T02:30:00.000Z');
+  const postCutoffUpdatedAt = new Date('2026-08-20T03:00:00.000Z');
+  const postCutoff = await prisma.order.create({
+    data: {
+      parentId: parent.id,
+      studentId: student.id,
+      packageName: 'Demo 10 Lesson Package',
+      packageId: 'demo-10',
+      creditQuantity: 10,
+      amountCents: 50000,
+      status: 'paid',
+      paidAt: postCutoffPaidAt,
+      createdAt: postCutoffPaidAt,
+      updatedAt: postCutoffUpdatedAt,
     },
   });
 
   // Reproduce the already-applied legacy migration's backfill before running the fix.
-  await prisma.$executeRaw`UPDATE "Order" SET "paidAt" = "createdAt" WHERE "id" = ${legacy.id}`;
-  const migration = await fs.readFile(
+  // Reproduce the state left by the prior two migrations. The second legacy
+  // row collides with the backfill shape despite having a genuine immediate
+  // payment, so the final migration must prefer an honest unknown value.
+  await prisma.$executeRaw`UPDATE "Order" SET "paidAt" = "createdAt" WHERE "id" = ${legacyBackfill.id}`;
+  const priorCorrection = await fs.readFile(
     new URL('../prisma/migrations/20260820030000_correct_legacy_paid_at/migration.sql', import.meta.url),
     'utf8',
   );
-  await prisma.$executeRawUnsafe(migration);
+  await prisma.$executeRawUnsafe(priorCorrection);
+  const finalCorrection = await fs.readFile(
+    new URL('../prisma/migrations/20260820040000_null_ambiguous_historical_paid_at/migration.sql', import.meta.url),
+    'utf8',
+  );
+  await prisma.$executeRawUnsafe(finalCorrection);
 
-  const [corrected, preserved] = await Promise.all([
-    prisma.order.findUniqueOrThrow({ where: { id: legacy.id } }),
-    prisma.order.findUniqueOrThrow({ where: { id: newer.id } }),
+  const [backfilled, collision, preserved] = await Promise.all([
+    prisma.order.findUniqueOrThrow({ where: { id: legacyBackfill.id } }),
+    prisma.order.findUniqueOrThrow({ where: { id: legacyImmediatePayment.id } }),
+    prisma.order.findUniqueOrThrow({ where: { id: postCutoff.id } }),
   ]);
-  assert.equal(corrected.paidAt?.toISOString(), legacyUpdatedAt.toISOString());
-  assert.equal(preserved.paidAt?.toISOString(), newerPaidAt.toISOString());
+  assert.equal(backfilled.paidAt, null);
+  assert.equal(collision.paidAt, null);
+  assert.equal(preserved.paidAt?.toISOString(), postCutoffPaidAt.toISOString());
 
   await prisma.order.deleteMany({ where: { parentId: parent.id } });
   await prisma.student.delete({ where: { id: student.id } });
