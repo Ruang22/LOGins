@@ -4,12 +4,14 @@ import { demoAuth } from './middleware/demo-auth.js';
 import { createParentRouter } from './routes/parent-routes.js';
 import { createTeacherRouter } from './routes/teacher-routes.js';
 import { createParentOrderRouter, createTeacherOrderRouter } from './routes/order-routes.js';
+import { createAiRouter } from './routes/ai-routes.js';
 
-export function createApp() {
+export function createApp({ aiProvider } = {}) {
   const app = express();
   app.use(express.json());
   app.get('/health', (_req, res) => res.json({ status: 'ok' }));
   app.use('/api', demoAuth);
+  app.use('/api/ai', createAiRouter({ aiProvider }));
   app.use('/api/teacher', createTeacherRouter());
   app.use('/api/teacher', createTeacherOrderRouter());
   app.use('/api/parent', createParentRouter());
