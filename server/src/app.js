@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { demoAuth } from './middleware/demo-auth.js';
 import { createParentRouter } from './routes/parent-routes.js';
 import { createTeacherRouter } from './routes/teacher-routes.js';
+import { createParentOrderRouter, createTeacherOrderRouter } from './routes/order-routes.js';
 
 export function createApp() {
   const app = express();
@@ -10,7 +11,9 @@ export function createApp() {
   app.get('/health', (_req, res) => res.json({ status: 'ok' }));
   app.use('/api', demoAuth);
   app.use('/api/teacher', createTeacherRouter());
+  app.use('/api/teacher', createTeacherOrderRouter());
   app.use('/api/parent', createParentRouter());
+  app.use('/api/parent', createParentOrderRouter());
   return app;
 }
 
