@@ -100,3 +100,23 @@ test('uses catalog facts instead of client-supplied package price and credits', 
     { packageId: 'demo-10', packageName: 'Demo 10 Lesson Package', creditQuantity: 10, amountCents: 50000 },
   );
 });
+
+test('a legacy pending order credits its catalog quantity instead of its persisted quantity', async () => {
+  const { parent, student } = await createFixture();
+  const legacyOrder = await prisma.order.create({
+    data: {
+      parentId: parent.id,
+      studentId: student.id,
+      packageId: 'demo-10',
+      packageName: 'Forged legacy package',
+      creditQuantity: 99999,
+      amountCents: 1,
+      paymentMode: 'simulation',
+    },
+  });
+  createdIds.orders.push(legacyOrder.id);
+
+  await confirmSimulationOrder(legacyOrder.id, parent);
+
+  assert.equal((await prisma.student.findUniqueOrThrow({ where: { id: student.id } })).totalCredits, 12);
+});

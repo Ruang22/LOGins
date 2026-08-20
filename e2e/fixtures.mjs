@@ -1,3 +1,6 @@
+import { PrismaClient } from '@prisma/client';
+import { test as base } from '@playwright/test';
+
 export const e2eDatabaseUrl = process.env.E2E_DATABASE_URL
   ?? 'postgresql://schedule_app:change-me-for-local-development@127.0.0.1:5433/schedule_assistant_e2e';
 
@@ -51,3 +54,14 @@ export async function resetE2eDatabase(prisma) {
     ],
   });
 }
+
+const e2ePrisma = new PrismaClient({
+  datasources: { db: { url: requireDedicatedE2eDatabase(e2eDatabaseUrl) } },
+});
+
+export const test = base.extend({
+  resetDatabase: [async ({}, use) => {
+    await resetE2eDatabase(e2ePrisma);
+    await use();
+  }, { auto: true }],
+});

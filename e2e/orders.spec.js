@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './fixtures.mjs';
 
 test('parent completes a visibly simulated package order through Express and sees the persisted balance', async ({ page }) => {
   await page.goto('/');
@@ -10,7 +11,7 @@ test('parent completes a visibly simulated package order through Express and see
   await page.getByRole('button', { name: 'Complete simulated payment' }).click();
 
   await expect(page.getByRole('status')).toContainText('Simulated payment complete');
-  await expect(page.getByText('Simulated payment complete')).toBeVisible();
+  await expect(page.getByText('Simulated payment complete', { exact: true })).toBeVisible();
   await expect(page.locator('.child-summary dd').first()).toHaveText('22');
   await expect(page.locator('.credit-balance strong')).toHaveText('19');
 });

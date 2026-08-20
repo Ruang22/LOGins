@@ -57,13 +57,15 @@ export async function confirmSimulationOrder(orderId, actorInput) {
     if (order.status !== 'pending') throw new OrderError('ORDER_NOT_PENDING');
 
     if (order.paymentMode !== 'simulation') throw new OrderError('INVALID_PAYMENT_MODE');
+    const packageOption = getPackage(order.packageId);
+    if (!packageOption) throw new OrderError('INVALID_PACKAGE');
     const paidOrder = await tx.order.update({
       where: { id: order.id },
       data: { status: 'paid', paidAt: new Date() },
     });
     await tx.student.update({
       where: { id: order.studentId },
-      data: { totalCredits: { increment: order.creditQuantity } },
+      data: { totalCredits: { increment: packageOption.creditQuantity } },
     });
     return paidOrder;
   }, { isolationLevel: 'Serializable' });

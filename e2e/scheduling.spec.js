@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './fixtures.mjs';
 
 async function preview(page, description) {
   await page.getByLabel('Describe the lesson').fill(description);
@@ -18,7 +19,7 @@ test('teacher confirms an individual AI preview through the Express API and Post
 
   await expect(page.getByRole('status')).toHaveText('Reservation confirmed and added to the weekly schedule.');
   await expect(page.getByRole('button', { name: /Avery Rivera/ })).toBeVisible();
-  await expect(page.getByRole('row').filter({ hasText: 'Avery Rivera (Demo Student)' })).toContainText('1');
+  await expect(page.getByRole('table', { name: 'Student lesson ledger' }).getByRole('row').filter({ hasText: 'Avery Rivera (Demo Student)' })).toContainText('1');
 });
 
 test('teacher confirms a same-grade group lesson through the backend validation path', async ({ page }) => {
@@ -28,7 +29,7 @@ test('teacher confirms a same-grade group lesson through the backend validation 
 
   await expect(page.getByRole('status')).toHaveText('Reservation confirmed and added to the weekly schedule.');
   await expect(page.getByRole('button', { name: /Avery Rivera.*Rowan Rivera/ })).toBeVisible();
-  await expect(page.getByRole('row').filter({ hasText: 'Rowan Rivera (Demo Student)' })).toContainText('1');
+  await expect(page.getByRole('table', { name: 'Student lesson ledger' }).getByRole('row').filter({ hasText: 'Rowan Rivera (Demo Student)' })).toContainText('1');
 });
 
 test('teacher receives the real TIME_CONFLICT rejection without adding a second lesson', async ({ page }) => {

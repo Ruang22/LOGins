@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './fixtures.mjs';
 
 function luminance([red, green, blue]) {
   const linear = [red, green, blue].map((channel) => {
