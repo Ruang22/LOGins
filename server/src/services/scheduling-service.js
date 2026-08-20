@@ -1,7 +1,7 @@
 import { prisma } from '../db/client.js';
 
 const LESSON_DURATION_MINUTES = 60;
-const MINUTE_ISO_8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::00(?:\.000)?)?(?:Z|[+-]\d{2}:\d{2})$/;
+const MINUTE_ISO_8601 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::00(?:\.000)?)?(Z|([+-])(\d{2}):(\d{2}))$/;
 
 class SchedulingError extends Error {
   constructor(code, message = code) {
@@ -17,8 +17,33 @@ function requireActorId(actor) {
 }
 
 function parseMinute(startAt) {
-  if (typeof startAt !== 'string' || !MINUTE_ISO_8601.test(startAt)) {
+  const match = typeof startAt === 'string' ? MINUTE_ISO_8601.exec(startAt) : null;
+  if (!match) {
     throw new SchedulingError('INVALID_TIME', 'A lesson must use a minute-precise ISO 8601 time with an explicit offset.');
+  }
+  const [, yearText, monthText, dayText, hourText, minuteText, , , offsetHourText, offsetMinuteText] = match;
+  const [year, month, day, hour, minute, offsetHour, offsetMinute] = [
+    yearText,
+    monthText,
+    dayText,
+    hourText,
+    minuteText,
+    offsetHourText ?? '0',
+    offsetMinuteText ?? '0',
+  ].map(Number);
+  const calendar = new Date(0);
+  calendar.setUTCFullYear(year, month - 1, day);
+  calendar.setUTCHours(hour, minute, 0, 0);
+  if (
+    calendar.getUTCFullYear() !== year
+    || calendar.getUTCMonth() !== month - 1
+    || calendar.getUTCDate() !== day
+    || calendar.getUTCHours() !== hour
+    || calendar.getUTCMinutes() !== minute
+    || offsetHour > 23
+    || offsetMinute > 59
+  ) {
+    throw new SchedulingError('INVALID_TIME', 'A lesson must use a real calendar minute.');
   }
   const parsed = new Date(startAt);
   if (Number.isNaN(parsed.getTime()) || parsed.getUTCSeconds() !== 0 || parsed.getUTCMilliseconds() !== 0) {

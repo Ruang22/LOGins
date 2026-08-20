@@ -103,6 +103,10 @@ test('rejects invalid, non-ISO, or non-minute start times', async () => {
     createReservation({ studentIds: [student.id], startAt: '2030-01-02T12:00:30Z' }, actor),
     (error) => error.code === 'INVALID_TIME',
   );
+  await assert.rejects(
+    createReservation({ studentIds: [student.id], startAt: '2030-02-30T12:00Z' }, actor),
+    (error) => error.code === 'INVALID_TIME',
+  );
 });
 
 test('completion transfers reserved credits to attended credits', async () => {
