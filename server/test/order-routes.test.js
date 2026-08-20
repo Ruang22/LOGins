@@ -25,25 +25,27 @@ test('parent creates a clearly simulated order and teacher can review it', async
   const created = await request(app)
     .post('/api/parent/orders')
     .set('x-demo-user', 'parent-demo')
-    .send({ studentId: student.id, packageName: 'Demo 10 Lesson Package', creditQuantity: 10, amountCents: 50000 })
+    .send({ studentId: student.id, packageId: 'demo-10', packageName: 'Forged package', creditQuantity: 99999, amountCents: 1 })
     .expect(201);
   createdOrderIds.push(created.body.id);
   assert.equal(created.body.status, 'pending');
   assert.equal(created.body.paymentMode, 'simulation');
+  assert.equal(created.body.creditQuantity, 10);
+  assert.equal(created.body.amountCents, 50000);
 
   const orders = await request(app)
     .get('/api/teacher/orders')
     .set('x-demo-user', 'teacher-demo')
     .expect(200);
-  assert.ok(orders.body.some(({ id, paymentMode }) => id === created.body.id && paymentMode === 'simulation'));
+  assert.ok(orders.body.some(({ id, paymentMode, paidAt }) => id === created.body.id && paymentMode === 'simulation' && paidAt === null));
 
-  await request(app)
+  const paid = await request(app)
     .post(`/api/parent/orders/${created.body.id}/simulate-payment`)
     .set('x-demo-user', 'parent-demo')
-    .expect(200, (response) => {
-      assert.equal(response.body.status, 'paid');
-      assert.equal(response.body.paymentMode, 'simulation');
-    });
+    .expect(200);
+  assert.equal(paid.body.status, 'paid');
+  assert.equal(paid.body.paymentMode, 'simulation');
+  assert.ok(paid.body.paidAt);
 });
 
 test('a parent is forbidden from reviewing teacher orders', async () => {

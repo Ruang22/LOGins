@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../db/client.js';
 import { requireRole } from '../middleware/demo-auth.js';
+import { listPackages } from '../catalog/package-catalog.js';
 
 const lessonInclude = {
   lessonLinks: {
@@ -36,6 +37,7 @@ export function createParentRouter() {
           ...student,
           lessons: lessonLinks.map(({ lesson }) => lesson),
         })),
+        packages: listPackages(),
       });
     } catch (error) {
       next(error);

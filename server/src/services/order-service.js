@@ -1,4 +1,5 @@
 import { prisma } from '../db/client.js';
+import { getPackage } from '../catalog/package-catalog.js';
 
 class OrderError extends Error {
   constructor(code, message = code) {
@@ -14,16 +15,16 @@ function requireActor(actor) {
 }
 
 function validateOrderInput(input) {
-  const { studentId, packageName, creditQuantity, amountCents } = input ?? {};
+  const { studentId, packageId } = input ?? {};
   if (
     typeof studentId !== 'string' || !studentId
-    || typeof packageName !== 'string' || !packageName.trim()
-    || !Number.isInteger(creditQuantity) || creditQuantity < 1
-    || !Number.isInteger(amountCents) || amountCents < 0
+    || typeof packageId !== 'string' || !packageId
   ) {
     throw new OrderError('INVALID_ORDER');
   }
-  return { studentId, packageName: packageName.trim(), creditQuantity, amountCents };
+  const packageOption = getPackage(packageId);
+  if (!packageOption) throw new OrderError('INVALID_PACKAGE');
+  return { studentId, ...packageOption };
 }
 
 async function lock(tx, value) {
@@ -39,7 +40,7 @@ export async function createOrder(input, parent) {
     const student = await tx.student.findUnique({ where: { id: orderInput.studentId }, select: { parentId: true } });
     if (!student) throw new OrderError('STUDENT_NOT_FOUND');
     if (student.parentId !== actor.id) throw new OrderError('FORBIDDEN');
-    return tx.order.create({ data: { ...orderInput, parentId: actor.id } });
+    return tx.order.create({ data: { ...orderInput, parentId: actor.id, paymentMode: 'simulation' } });
   });
 }
 
@@ -55,7 +56,11 @@ export async function confirmSimulationOrder(orderId, actorInput) {
     if (order.parentId !== actor.id) throw new OrderError('FORBIDDEN');
     if (order.status !== 'pending') throw new OrderError('ORDER_NOT_PENDING');
 
-    const paidOrder = await tx.order.update({ where: { id: order.id }, data: { status: 'paid' } });
+    if (order.paymentMode !== 'simulation') throw new OrderError('INVALID_PAYMENT_MODE');
+    const paidOrder = await tx.order.update({
+      where: { id: order.id },
+      data: { status: 'paid', paidAt: new Date() },
+    });
     await tx.student.update({
       where: { id: order.studentId },
       data: { totalCredits: { increment: order.creditQuantity } },

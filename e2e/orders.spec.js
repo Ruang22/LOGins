@@ -20,13 +20,11 @@ test('parent cannot access a supplied foreign child id and the dashboard cannot 
     headers: { 'x-demo-user': 'parent-demo' },
     data: {
       studentId: 'e2e-foreign-child',
-      packageName: 'Foreign Synthetic Package',
-      creditQuantity: 1,
-      amountCents: 1,
+      packageId: 'demo-10',
     },
   });
-  expect(foreignOrderAttempt.status()).toBe(404);
-  await expect(foreignOrderAttempt.json()).resolves.toEqual({ code: 'STUDENT_NOT_FOUND' });
+  expect(foreignOrderAttempt.status()).toBe(403);
+  await expect(foreignOrderAttempt.json()).resolves.toEqual({ code: 'FORBIDDEN' });
 
   const dashboard = await page.request.get('/api/parent/dashboard', {
     headers: { 'x-demo-user': 'parent-demo' },

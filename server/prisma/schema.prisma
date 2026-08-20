@@ -24,6 +24,11 @@ enum OrderStatus {
   cancelled
 }
 
+enum PaymentMode {
+  simulation
+  manual_qr
+}
+
 model User {
   id             String   @id @default(cuid())
   name           String
@@ -82,9 +87,12 @@ model Order {
   parentId       String
   studentId      String
   packageName    String
+  packageId      String
   creditQuantity Int
   amountCents    Int
   status         OrderStatus @default(pending)
+  paymentMode    PaymentMode @default(simulation)
+  paidAt         DateTime?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   parent         User        @relation("OrderParent", fields: [parentId], references: [id], onDelete: Restrict)

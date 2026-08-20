@@ -67,9 +67,10 @@ test('teacher creates, views, and completes a lesson through teacher routes', as
     .expect(200);
   assert.ok(schedule.body.some(({ id }) => id === created.body.id));
 
-  await request(app)
+  const completed = await request(app)
     .patch(`/api/teacher/lessons/${created.body.id}`)
     .set('x-demo-user', 'teacher-demo')
     .send({ action: 'complete' })
-    .expect(200, (response) => assert.equal(response.body.status, 'completed'));
+    .expect(200);
+  assert.equal(completed.body.status, 'completed');
 });

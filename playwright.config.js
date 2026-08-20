@@ -5,6 +5,7 @@ const databaseUrl = requireDedicatedE2eDatabase(e2eDatabaseUrl);
 
 export default defineConfig({
   testDir: './e2e',
+  workers: 1,
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,

@@ -59,6 +59,16 @@ export async function seedDatabase(prisma) {
       },
     });
   }
+
+  const firstStudent = await prisma.student.findFirstOrThrow({
+    where: { parentId: seededParent.id },
+    orderBy: { name: 'asc' },
+  });
+  await prisma.order.upsert({
+    where: { id: 'demo-pending-order' },
+    update: { parentId: seededParent.id, studentId: firstStudent.id, packageId: 'demo-10', packageName: 'Demo 10 Lesson Package', creditQuantity: 10, amountCents: 50000, paymentMode: 'simulation', status: 'pending', paidAt: null },
+    create: { id: 'demo-pending-order', parentId: seededParent.id, studentId: firstStudent.id, packageId: 'demo-10', packageName: 'Demo 10 Lesson Package', creditQuantity: 10, amountCents: 50000, paymentMode: 'simulation' },
+  });
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

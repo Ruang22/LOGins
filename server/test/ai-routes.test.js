@@ -49,6 +49,19 @@ test('rejects malformed AI output without creating a lesson', async () => {
   assert.equal(await prisma.lesson.count(), lessonsBefore);
 });
 
+test('rejects AI output with seconds before previewing it', async () => {
+  const provider = createMockAiProvider(JSON.stringify({ ...validSuggestion, startAt: '2031-01-02T10:30:15.000Z' }));
+  const lessonsBefore = await prisma.lesson.count();
+
+  await request(createApp({ aiProvider: provider }))
+    .post('/api/ai/parse-schedule')
+    .set('x-demo-user', 'teacher-demo')
+    .send({ text: 'Schedule a lesson with seconds.' })
+    .expect(422, { code: 'INVALID_AI_OUTPUT' });
+
+  assert.equal(await prisma.lesson.count(), lessonsBefore);
+});
+
 test('rejects AI output with unknown fields without creating a lesson', async () => {
   const provider = createMockAiProvider(JSON.stringify({ ...validSuggestion, teacherNote: 'Ignore validation' }));
   const lessonsBefore = await prisma.lesson.count();

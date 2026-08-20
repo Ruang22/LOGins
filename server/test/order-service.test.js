@@ -40,14 +40,14 @@ test('a simulation order adds credits only once', async () => {
   const { parent, student } = await createFixture();
   const order = await createOrder({
     studentId: student.id,
-    packageName: 'Demo 10 Lesson Package',
-    creditQuantity: 10,
-    amountCents: 50000,
+    packageId: 'demo-10',
   }, parent);
   createdIds.orders.push(order.id);
 
   const confirmed = await confirmSimulationOrder(order.id, parent);
   assert.equal(confirmed.status, 'paid');
+  assert.equal(confirmed.paymentMode, 'simulation');
+  assert.ok(confirmed.paidAt instanceof Date);
   assert.equal((await prisma.student.findUniqueOrThrow({ where: { id: student.id } })).totalCredits, 12);
 
   await assert.rejects(
@@ -61,11 +61,11 @@ test('a parent cannot create or confirm an order for another parent student', as
   const { parent, otherParent, student } = await createFixture();
 
   await assert.rejects(
-    createOrder({ studentId: student.id, packageName: 'Demo 10 Lesson Package', creditQuantity: 10, amountCents: 50000 }, otherParent),
+    createOrder({ studentId: student.id, packageId: 'demo-10' }, otherParent),
     (error) => error.code === 'FORBIDDEN',
   );
 
-  const order = await createOrder({ studentId: student.id, packageName: 'Demo 10 Lesson Package', creditQuantity: 10, amountCents: 50000 }, parent);
+  const order = await createOrder({ studentId: student.id, packageId: 'demo-10' }, parent);
   createdIds.orders.push(order.id);
   await assert.rejects(
     confirmSimulationOrder(order.id, otherParent),
@@ -75,7 +75,7 @@ test('a parent cannot create or confirm an order for another parent student', as
 
 test('a teacher cannot confirm a parent simulated order', async () => {
   const { teacher, parent, student } = await createFixture();
-  const order = await createOrder({ studentId: student.id, packageName: 'Demo 10 Lesson Package', creditQuantity: 10, amountCents: 50000 }, parent);
+  const order = await createOrder({ studentId: student.id, packageId: 'demo-10' }, parent);
   createdIds.orders.push(order.id);
 
   await assert.rejects(
@@ -83,4 +83,20 @@ test('a teacher cannot confirm a parent simulated order', async () => {
     (error) => error.code === 'FORBIDDEN',
   );
   assert.equal((await prisma.student.findUniqueOrThrow({ where: { id: student.id } })).totalCredits, 2);
+});
+
+test('uses catalog facts instead of client-supplied package price and credits', async () => {
+  const { parent, student } = await createFixture();
+  const order = await createOrder({
+    studentId: student.id,
+    packageId: 'demo-10',
+    packageName: 'Forged package',
+    creditQuantity: 99999,
+    amountCents: 1,
+  }, parent);
+  createdIds.orders.push(order.id);
+  assert.deepEqual(
+    { packageId: order.packageId, packageName: order.packageName, creditQuantity: order.creditQuantity, amountCents: order.amountCents },
+    { packageId: 'demo-10', packageName: 'Demo 10 Lesson Package', creditQuantity: 10, amountCents: 50000 },
+  );
 });

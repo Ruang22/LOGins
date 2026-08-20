@@ -17,7 +17,7 @@ export function createParentOrderRouter() {
   router.post('/orders', async (req, res, next) => {
     try {
       const order = await createOrder(req.body, req.demoUser);
-      res.status(201).json({ ...order, paymentMode: 'simulation' });
+      res.status(201).json(order);
     } catch (error) {
       if (!respondToOrderError(error, res)) next(error);
     }
@@ -26,7 +26,7 @@ export function createParentOrderRouter() {
   router.post('/orders/:id/simulate-payment', async (req, res, next) => {
     try {
       const order = await confirmSimulationOrder(req.params.id, req.demoUser);
-      res.json({ ...order, paymentMode: 'simulation' });
+      res.json(order);
     } catch (error) {
       if (!respondToOrderError(error, res)) next(error);
     }
@@ -44,7 +44,7 @@ export function createTeacherOrderRouter() {
         orderBy: { createdAt: 'desc' },
         include: { student: { select: { id: true, name: true, grade: true } }, parent: { select: { id: true, name: true } } },
       });
-      res.json(orders.map((order) => ({ ...order, paymentMode: 'simulation' })));
+      res.json(orders);
     } catch (error) {
       next(error);
     }
