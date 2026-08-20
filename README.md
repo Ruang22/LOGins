@@ -30,8 +30,10 @@ The client is served at `http://127.0.0.1:5173` and proxies `/api` requests to t
 npm --workspace server test
 npm --workspace client test
 npm --workspace client run build
+# Start a separate, disposable PostgreSQL service for browser tests.
+docker compose up -d db-e2e
 npx playwright install chromium
 npm run test:e2e
 ```
 
-The Playwright suite runs the browser workflow against deterministic synthetic API responses. Server integration tests separately verify the transactional scheduling, credit, order, and parent-scoping rules against the dedicated test database.
+The Playwright suite starts Vite and Express, resets only the dedicated `schedule_assistant_e2e` PostgreSQL database, and exercises the browser workflow through the real API. It uses deterministic synthetic fixtures and a server-side AI-provider substitute; it never routes or fulfills browser `/api` requests. Server integration tests separately verify the transactional scheduling, credit, order, and parent-scoping rules against the dedicated test database.

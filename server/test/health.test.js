@@ -1,3 +1,4 @@
+import { test } from 'node:test';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 

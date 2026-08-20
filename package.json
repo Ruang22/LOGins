@@ -10,7 +10,8 @@
     "dev:client": "npm --workspace client run dev",
     "dev:server": "npm --workspace server run dev",
     "test:server": "npm --workspace server test",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "e2e:stack": "node e2e/start-stack.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0"

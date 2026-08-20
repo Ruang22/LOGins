@@ -1,4 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
+import { e2eDatabaseUrl, requireDedicatedE2eDatabase } from './e2e/fixtures.mjs';
+
+const databaseUrl = requireDedicatedE2eDatabase(e2eDatabaseUrl);
 
 export default defineConfig({
   testDir: './e2e',
@@ -12,8 +15,9 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: 'npm --workspace client run dev -- --host 127.0.0.1 --port 5173',
+    command: 'npm run e2e:stack',
     url: 'http://127.0.0.1:5173',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
+    env: { ...process.env, E2E_DATABASE_URL: databaseUrl },
   },
 });
