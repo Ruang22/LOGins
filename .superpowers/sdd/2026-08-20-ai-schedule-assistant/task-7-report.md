@@ -20,3 +20,11 @@
 ## Deferred
 
 Install Node.js, run `npm install`, then execute the client component test and production build. Browser-level validation is also deferred because the local client cannot be started without Node.js.
+
+## Follow-up: Schedule visibility and drawer accessibility
+
+- Replaced the fixed January 2031, fixed-hour schedule with a real current-week view, previous/next week controls, and a Today control.
+- The time rail is now derived from the displayed API lesson start values and AI preview start value; it preserves minute-precise slots instead of filtering to a preset hour range. Confirming a draft moves the visible week to that lesson's week.
+- Extracted the lesson drawer into an accessible modal: it receives initial focus, traps Tab/Shift+Tab, closes on Escape or backdrop dismissal, and restores focus to the lesson trigger.
+- Added a focused modal component test for initial focus and Escape behavior.
+- Re-ran static validation (`git diff --check` and package JSON parse): passed. Client test/build commands remain blocked because Node.js/npm are unavailable on `PATH`.
