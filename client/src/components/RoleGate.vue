@@ -15,7 +15,7 @@ function choose(role, event) {
 <template>
   <section class="role-gate" data-testid="role-gate" aria-labelledby="role-gate-title">
     <header class="role-gate__masthead">
-      <p class="role-gate__wordmark"><span aria-hidden="true">课</span> Lessonline</p>
+      <p class="role-gate__wordmark"><span aria-hidden="true">课</span> 课堂时刻牌</p>
       <p class="role-gate__session">合成演示 · 本次会话</p>
     </header>
 
@@ -43,13 +43,11 @@ function choose(role, event) {
           @click="choose('teacher', $event)"
         >
           <span class="role-choice__face">
-            <span class="role-choice__index" aria-hidden="true">A</span>
+            <span class="role-choice__index" aria-hidden="true">师</span>
             <span class="role-choice__body">
               <span class="role-choice__eyebrow">教师工作台</span>
               <span class="role-choice__title">我是教师</span>
-              <span class="role-choice__minute">
-                <time datetime="09:30">09:30</time><span>英语课</span>
-              </span>
+              <span class="role-choice__minute"><time datetime="09:30">09:30</time> 英语课</span>
             </span>
             <span class="role-choice__arrow" aria-hidden="true">→</span>
           </span>
@@ -63,7 +61,7 @@ function choose(role, event) {
           @click="choose('parent', $event)"
         >
           <span class="role-choice__face">
-            <span class="role-choice__index" aria-hidden="true">B</span>
+            <span class="role-choice__index" aria-hidden="true">家</span>
             <span class="role-choice__body">
               <span class="role-choice__eyebrow">家庭课程中心</span>
               <span class="role-choice__title">我是家长</span>

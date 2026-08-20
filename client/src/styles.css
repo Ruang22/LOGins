@@ -25,7 +25,7 @@
 .role-choice__body{align-content:center;display:grid;gap:3px;padding:18px 20px}
 .role-choice__eyebrow{color:#b7bbb6;font-size:.68rem;font-weight:750;letter-spacing:.11em}
 .role-choice__title{font-size:clamp(1.45rem,5vw,2.25rem);font-weight:850;letter-spacing:-.04em;line-height:1.1}
-.role-choice__minute{width:max-content;display:grid;grid-template-columns:auto auto;gap:10px;align-items:center;margin-top:12px;padding-top:9px;border-top:1px solid #545957;color:#d9d4c9;font-size:.78rem}
+.role-choice__minute{width:max-content;display:flex;gap:10px;align-items:center;margin-top:12px;padding-top:9px;border-top:1px solid #545957;color:#d9d4c9;font-size:.78rem}
 .role-choice__minute time{color:var(--signal);font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace;font-size:.9rem;font-variant-numeric:tabular-nums;font-weight:800}
 .role-choice__minute--parent span:first-child{color:#cde2dc}.role-choice__minute--parent span:last-child{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace;font-variant-numeric:tabular-nums}
 .role-choice__arrow{align-self:stretch;display:grid;place-items:center;border-left:1px solid #4e5352;color:var(--signal);font-size:1.25rem}
