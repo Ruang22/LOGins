@@ -1,9 +1,16 @@
 import express from 'express';
 import { pathToFileURL } from 'node:url';
+import { demoAuth } from './middleware/demo-auth.js';
+import { createParentRouter } from './routes/parent-routes.js';
+import { createTeacherRouter } from './routes/teacher-routes.js';
 
 export function createApp() {
   const app = express();
+  app.use(express.json());
   app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+  app.use('/api', demoAuth);
+  app.use('/api/teacher', createTeacherRouter());
+  app.use('/api/parent', createParentRouter());
   return app;
 }
 
