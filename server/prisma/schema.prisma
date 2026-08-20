@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  teacher
+  parent
+}
+
+enum LessonStatus {
+  scheduled
+  completed
+  cancelled
+}
+
+enum OrderStatus {
+  pending
+  paid
+  cancelled
+}
+
+model User {
+  id             String   @id @default(cuid())
+  name           String
+  email          String   @unique
+  role           UserRole
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  taughtLessons  Lesson[] @relation("LessonTeacher")
+  parentStudents Student[] @relation("StudentParent")
+  orders         Order[]  @relation("OrderParent")
+}
+
+model Student {
+  id              String              @id @default(cuid())
+  parentId        String
+  name            String
+  grade           Int
+  totalCredits    Int                 @default(0)
+  attendedCredits Int                 @default(0)
+  reservedCredits Int                 @default(0)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  parent          User                @relation("StudentParent", fields: [parentId], references: [id], onDelete: Restrict)
+  lessonLinks     LessonParticipant[]
+  orders          Order[]
+
+  @@unique([parentId, name])
+}
+
+model Lesson {
+  id              String              @id @default(cuid())
+  teacherId       String
+  startsAt        DateTime
+  durationMinutes Int                 @default(60)
+  status          LessonStatus        @default(scheduled)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  teacher         User                @relation("LessonTeacher", fields: [teacherId], references: [id], onDelete: Restrict)
+  participants    LessonParticipant[]
+
+  @@index([teacherId, startsAt])
+}
+
+model LessonParticipant {
+  lessonId  String
+  studentId String
+  lesson    Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@id([lessonId, studentId])
+  @@index([studentId])
+}
+
+model Order {
+  id             String      @id @default(cuid())
+  parentId       String
+  studentId      String
+  packageName    String
+  creditQuantity Int
+  amountCents    Int
+  status         OrderStatus @default(pending)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  parent         User        @relation("OrderParent", fields: [parentId], references: [id], onDelete: Restrict)
+  student        Student     @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@index([parentId])
+  @@index([studentId])
+}
