@@ -77,6 +77,109 @@ test('teacher creates, views, and completes a lesson through teacher routes', as
   assert.equal(completed.body.status, 'completed');
 });
 
+test('teacher manually creates and edits a minute-precise lesson with a note', async () => {
+  await seedDatabase(prisma);
+  const firstStudent = await createStudent({ grade: 8, credits: 3 });
+  const secondStudent = await createStudent({ grade: 8, credits: 3 });
+  const app = createApp();
+
+  const created = await request(app)
+    .post('/api/teacher/lessons')
+    .set('x-demo-user', 'teacher-demo')
+    .send({
+      studentIds: [firstStudent.id],
+      startAt: '2032-03-01T18:05:00+08:00',
+      durationMinutes: 60,
+      note: '语法复习',
+    })
+    .expect(201);
+  createdIds.lessons.push(created.body.id);
+  assert.equal(created.body.note, '语法复习');
+
+  const edited = await request(app)
+    .patch(`/api/teacher/lessons/${created.body.id}`)
+    .set('x-demo-user', 'teacher-demo')
+    .send({
+      studentIds: [secondStudent.id],
+      startAt: '2032-03-01T19:05:00+08:00',
+      durationMinutes: 60,
+      note: '阅读复习',
+    })
+    .expect(200);
+  assert.equal(edited.body.note, '阅读复习');
+  assert.equal(edited.body.startsAt, '2032-03-01T11:05:00.000Z');
+  assert.deepEqual(edited.body.participants.map(({ studentId }) => studentId), [secondStudent.id]);
+});
+
+test('lesson patch rejects mixed and malformed update payloads', async () => {
+  await seedDatabase(prisma);
+  const student = await createStudent();
+  const app = createApp();
+  const created = await request(app)
+    .post('/api/teacher/lessons')
+    .set('x-demo-user', 'teacher-demo')
+    .send({ studentIds: [student.id], startAt: at(20) })
+    .expect(201);
+  createdIds.lessons.push(created.body.id);
+
+  const edit = {
+    studentIds: [student.id],
+    startAt: at(21),
+    durationMinutes: 60,
+    note: '',
+  };
+  await request(app)
+    .patch(`/api/teacher/lessons/${created.body.id}`)
+    .set('x-demo-user', 'teacher-demo')
+    .send({ action: 'cancel', ...edit })
+    .expect(400, { code: 'INVALID_LESSON_UPDATE' });
+  await request(app)
+    .patch(`/api/teacher/lessons/${created.body.id}`)
+    .set('x-demo-user', 'teacher-demo')
+    .send({ ...edit, unexpected: true })
+    .expect(400, { code: 'INVALID_LESSON_UPDATE' });
+  await request(app)
+    .patch(`/api/teacher/lessons/${created.body.id}`)
+    .set('x-demo-user', 'teacher-demo')
+    .send({})
+    .expect(400, { code: 'INVALID_LESSON_UPDATE' });
+  await request(app)
+    .patch(`/api/teacher/lessons/${created.body.id}`)
+    .set('x-demo-user', 'teacher-demo')
+    .send({ action: 'reschedule' })
+    .expect(400, { code: 'INVALID_LESSON_UPDATE' });
+});
+
+test('lesson edits map unknown lessons to 404 and parent access to 403', async () => {
+  await seedDatabase(prisma);
+  const student = await createStudent();
+  const body = { studentIds: [student.id], startAt: at(22), durationMinutes: 60, note: '' };
+  const app = createApp();
+
+  await request(app)
+    .patch('/api/teacher/lessons/unknown-lesson')
+    .set('x-demo-user', 'teacher-demo')
+    .send(body)
+    .expect(404, { code: 'LESSON_NOT_FOUND' });
+  await request(app)
+    .patch('/api/teacher/lessons/unknown-lesson')
+    .set('x-demo-user', 'parent-demo')
+    .send(body)
+    .expect(403, { code: 'FORBIDDEN' });
+});
+
+test('teacher route refuses to schedule an inactive student', async () => {
+  await seedDatabase(prisma);
+  const student = await createStudent();
+  await prisma.student.update({ where: { id: student.id }, data: { isActive: false } });
+
+  await request(createApp())
+    .post('/api/teacher/lessons')
+    .set('x-demo-user', 'teacher-demo')
+    .send({ studentIds: [student.id], startAt: at(23), durationMinutes: 60, note: '' })
+    .expect(400, { code: 'STUDENT_INACTIVE' });
+});
+
 test('teacher creates, edits, and archives a student through teacher routes', async () => {
   await seedDatabase(prisma);
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
