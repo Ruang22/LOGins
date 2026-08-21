@@ -28,7 +28,7 @@ test('teacher confirms an individual AI preview through the Express API and Post
 
   await expect(page.getByRole('status')).toHaveText('预约已确认，并已加入课表。');
   await expect(page.getByRole('button', { name: /Avery Rivera/ })).toBeVisible();
-  await expect(page.locator('.schedule-line').filter({ hasText: 'Avery Rivera (Demo Student)' })).toContainText('已排课');
+  await expect(page.getByTestId('schedule-row').filter({ hasText: 'Avery Rivera (Demo Student)' })).toContainText('已排课');
 });
 
 test('teacher confirms a same-grade group lesson through the backend validation path', async ({ page }) => {
@@ -39,7 +39,7 @@ test('teacher confirms a same-grade group lesson through the backend validation 
 
   await expect(page.getByRole('status')).toHaveText('预约已确认，并已加入课表。');
   await expect(page.getByRole('button', { name: /Avery Rivera.*Rowan Rivera/ })).toBeVisible();
-  await expect(page.locator('.schedule-line').filter({ hasText: 'Rowan Rivera (Demo Student)' })).toContainText('已排课');
+  await expect(page.getByTestId('schedule-row').filter({ hasText: 'Rowan Rivera (Demo Student)' })).toContainText('已排课');
 });
 
 test('teacher receives the real TIME_CONFLICT rejection without adding a second lesson', async ({ page }) => {
@@ -97,11 +97,16 @@ test('keyboard users stay in the lesson dialog and return to its trigger after c
 });
 
 test('teacher workbench captures readable desktop and mobile views without horizontal overflow', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/');
+  await selectTeacherWorkbench(page);
+  await previewAndConfirm(page, 'e2e individual lesson');
+
+  const scheduledTime = page.getByTestId('schedule-row').getByTestId('schedule-time');
+  await expect(scheduledTime).toHaveText(/^\d{2}:\d{2}$/);
+
   for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: 'mobile', width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
-    await page.goto('/');
-    await selectTeacherWorkbench(page);
-    await expect(page.getByText('每行是一节课。轻触课程可查看、完成或取消。')).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`teacher-${viewport.name}.png`), fullPage: true });
 
     if (viewport.name === 'mobile') {

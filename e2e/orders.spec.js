@@ -19,8 +19,8 @@ test('parent completes a visibly simulated package order through Express and see
 
   await expect(page.getByRole('status')).toContainText('模拟付款已完成');
   await expect(page.getByText('模拟付款已完成', { exact: true })).toBeVisible();
-  await expect(page.locator('.parent-balance dd').first()).toHaveText('22');
-  await expect(page.locator('.parent-balance__line > p strong')).toHaveText('19 节');
+  await expect(page.getByTestId('purchased-credits')).toHaveText('22');
+  await expect(page.getByTestId('available-credits')).toHaveText('19 节');
 });
 
 test('parent cannot access a supplied foreign child id and the dashboard cannot render that record', async ({ page }) => {
@@ -50,11 +50,22 @@ test('parent cannot access a supplied foreign child id and the dashboard cannot 
 });
 
 test('parent workbench captures readable desktop and mobile views without horizontal overflow', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/');
+  await selectParentWorkbench(page);
+
+  const createLesson = await page.request.post('/api/teacher/lessons', {
+    headers: { 'x-demo-user': 'teacher-demo' },
+    data: { studentIds: ['e2e-avery'], startAt: '2032-01-05T10:00:00.000Z' },
+  });
+  expect(createLesson.status()).toBe(201);
+  await page.getByRole('button', { name: '刷新轨迹' }).click();
+
+  const nextLessonTime = page.getByTestId('next-lesson-time');
+  await expect(nextLessonTime).toHaveText(/^\d{2}:\d{2}$/);
+
   for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: 'mobile', width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
-    await page.goto('/');
-    await selectParentWorkbench(page);
-    await expect(page.getByText('模拟支付 · 演示数据')).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`parent-${viewport.name}.png`), fullPage: true });
 
     if (viewport.name === 'mobile') {

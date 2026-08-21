@@ -126,6 +126,7 @@ watch(() => props.lessons, (lessons) => {
         :key="lesson.id"
         type="button"
         class="schedule-line"
+        data-testid="schedule-row"
         :class="`schedule-line--${lesson.status}`"
         @click="selectLesson(lesson, $event)"
       >

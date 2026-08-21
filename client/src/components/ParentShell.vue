@@ -95,7 +95,7 @@ defineExpose({ focus });
           <div v-if="nextLesson" class="parent-next__bar">
             <time :datetime="nextLesson.startsAt">
               <small>{{ formatDay(nextLesson.startsAt) }}</small>
-              <strong>{{ formatTime(nextLesson.startsAt) }}</strong>
+              <strong data-testid="next-lesson-time">{{ formatTime(nextLesson.startsAt) }}</strong>
             </time>
             <div>
               <p>下一段学习时间已经排好</p>
@@ -131,9 +131,9 @@ defineExpose({ focus });
             <h2 id="parent-balance-title">剩余课时</h2>
           </div>
           <div class="parent-balance__line">
-            <p><strong>{{ availableCredits }} 节</strong><span>可继续预约</span></p>
+            <p><strong data-testid="available-credits">{{ availableCredits }} 节</strong><span>可继续预约</span></p>
             <dl>
-              <div><dt>已购课时</dt><dd>{{ child.totalCredits }}</dd></div>
+              <div><dt>已购课时</dt><dd data-testid="purchased-credits">{{ child.totalCredits }}</dd></div>
               <div><dt>已预约</dt><dd>{{ child.reservedCredits }}</dd></div>
               <div><dt>已完成</dt><dd>{{ child.attendedCredits }}</dd></div>
             </dl>
