@@ -32,11 +32,9 @@ const addDays = (value, count) => {
 const sortedLessons = computed(() => [...props.lessons].sort(
   (left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime(),
 ));
-const initialDay = props.selectedDate ?? sortedLessons.value[0]?.startsAt ?? new Date();
+const initialDay = props.selectedDate ?? new Date();
 const selectedDay = ref(dateKey(initialDay));
 const weekAnchor = ref(startOfWeek(initialDay));
-const userSelectedDay = ref(false);
-const hasHydratedLessons = ref(sortedLessons.value.length > 0);
 const weekDays = computed(() => Array.from({ length: 7 }, (_, index) => addDays(weekAnchor.value, index)));
 const selectedLessons = computed(() => sortedLessons.value.filter(
   (lesson) => dateKey(lesson.startsAt) === selectedDay.value,
@@ -66,7 +64,6 @@ function moveToDay(day) {
 }
 
 function selectDay(day) {
-  userSelectedDay.value = true;
   moveToDay(day);
   emit('update:selected-date', selectedDay.value);
 }
@@ -82,15 +79,6 @@ function selectLesson(lesson, event) {
 watch(() => props.selectedDate, (value) => {
   if (value) moveToDay(value);
 });
-
-watch(() => props.lessons, (lessons) => {
-  if (!lessons.length || hasHydratedLessons.value) return;
-  hasHydratedLessons.value = true;
-  if (userSelectedDay.value || props.selectedDate) return;
-  moveToDay([...lessons].sort(
-    (left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime(),
-  )[0].startsAt);
-}, { deep: true });
 </script>
 
 <template>

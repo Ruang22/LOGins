@@ -3,6 +3,7 @@ import { ref } from 'vue';
 
 const emit = defineEmits(['select']);
 const activatedRole = ref(null);
+const firstRoleChoice = ref(null);
 
 function choose(role, event) {
   activatedRole.value = role;
@@ -10,6 +11,12 @@ function choose(role, event) {
   event.currentTarget.closest('.role-board')?.classList.add('is-choosing');
   emit('select', role);
 }
+
+function focus() {
+  firstRoleChoice.value?.focus();
+}
+
+defineExpose({ focus });
 </script>
 
 <template>
@@ -36,6 +43,7 @@ function choose(role, event) {
         </div>
 
         <button
+          ref="firstRoleChoice"
           class="role-choice role-choice--teacher"
           :class="{ 'is-active': activatedRole === 'teacher' }"
           type="button"

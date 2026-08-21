@@ -12,6 +12,7 @@ const loading = ref(false); const error = ref(''); const notice = ref('');
 const teacher = ref({ lessons: [], students: [], orders: [], suggestion: null, draft: '' });
 const parent = ref({ data: null, order: null }); const selectedLesson = ref(null); const lessonTrigger = ref(null);
 const workbenchDestination = ref(null);
+const roleGateDestination = ref(null);
 const teacherScheduleDate = ref(null);
 const formatDate = (v) => new Intl.DateTimeFormat('zh-CN', { weekday: 'short', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(v));
 const participants = (lesson) => lesson.participants?.map(({ student }) => student.name).join('、') ?? '学生课程';
@@ -31,14 +32,14 @@ async function transition(action) { if (!selectedLesson.value) return; loading.v
 async function purchase(option) { if (!child.value) return; loading.value = true; try { parent.value.order = await api.parent.createOrder({ studentId: child.value.id, packageId: option.packageId }); } catch (e) { error.value = `无法创建演示订单（${e.message}）。`; } finally { loading.value = false; } }
 async function simulatePayment() { loading.value = true; try { parent.value.order = await api.parent.simulatePayment(parent.value.order.id); notice.value = '模拟付款已完成，演示课时余额已刷新。'; await loadParent(); } catch (e) { error.value = `无法完成模拟付款（${e.message}）。`; } finally { loading.value = false; } }
 async function select(next) { selectRole(next); notice.value = ''; error.value = ''; await nextTick(); workbenchDestination.value?.focus(); load(); }
-function changeRole() { resetRole(); notice.value = ''; error.value = ''; }
+async function changeRole() { resetRole(); notice.value = ''; error.value = ''; await nextTick(); roleGateDestination.value?.focus(); }
 function openManualSchedule() { notice.value = '手动排课仍在原型阶段，当前不会向服务器写入课程。'; }
 function openAi() { notice.value = 'AI 只生成待确认草稿；确认前不会更改课表或课时。'; }
 </script>
 
 <template>
   <Transition name="role-depart">
-    <RoleGate v-if="!role" @select="select" />
+    <RoleGate v-if="!role" ref="roleGateDestination" @select="select" />
   </Transition>
   <main v-if="role" class="app-shell" :class="{ 'app-shell--teacher': role === 'teacher', 'app-shell--parent': role === 'parent' }" :inert="selectedLesson ? '' : undefined" :aria-hidden="selectedLesson ? 'true' : undefined">
     <TeacherShell

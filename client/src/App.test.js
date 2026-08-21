@@ -40,6 +40,35 @@ describe('App', () => {
     wrapper.unmount();
   });
 
+  it.each([
+    ['教师', 'choose-teacher', 'teacher-shell'],
+    ['家长', 'choose-parent', 'parent-shell'],
+  ])('%s切换身份后将焦点移回身份选择的第一个入口', async (_label, choice, shell) => {
+    const wrapper = mount(App, {
+      attachTo: document.body,
+      global: { stubs: { RoleGate: false } },
+    });
+
+    await wrapper.get(`[data-testid="${choice}"]`).trigger('click');
+    await flushPromises();
+    const switchRole = wrapper.findAll(`[data-testid="${shell}"] button`)
+      .find((button) => button.text() === '切换身份');
+    await switchRole.trigger('click');
+    await flushPromises();
+
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="choose-teacher"]').element);
+    wrapper.unmount();
+  });
+
+  it('家长工作台只保留 App 拥有的一个 main landmark', async () => {
+    const wrapper = mount(App, { global: { stubs: { RoleGate: false } } });
+
+    await wrapper.get('[data-testid="choose-parent"]').trigger('click');
+
+    expect(wrapper.findAll('main')).toHaveLength(1);
+    expect(wrapper.find('main main').exists()).toBe(false);
+  });
+
   it('确认 AI 草稿后将课表导航到新课程日期', async () => {
     const existingLesson = {
       id: 'lesson-existing',

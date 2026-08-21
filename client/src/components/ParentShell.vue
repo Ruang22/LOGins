@@ -70,11 +70,11 @@ defineExpose({ focus });
       </div>
     </header>
 
-    <main class="parent-shell__content">
+    <section class="parent-shell__content" aria-labelledby="parent-workbench-title">
       <div class="parent-shell__heading">
         <div>
           <p>家长端 · 单孩子视图</p>
-          <h1 ref="title" tabindex="-1" data-testid="workbench-destination">
+          <h1 id="parent-workbench-title" ref="title" tabindex="-1" data-testid="workbench-destination">
             {{ child ? `${child.name}的课程轨迹` : '孩子的课程轨迹' }}
           </h1>
           <span v-if="child">{{ child.grade }} 年级 · 只显示当前家长账户的第一位孩子</span>
@@ -185,6 +185,6 @@ defineExpose({ focus });
       <p v-else class="parent-loading" role="status">
         {{ loading ? '正在读取演示课程轨迹…' : '暂时没有可显示的孩子课程数据。' }}
       </p>
-    </main>
+    </section>
   </section>
 </template>
