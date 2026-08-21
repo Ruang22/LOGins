@@ -12,6 +12,7 @@ const props = defineProps({
   notice: { type: String, default: '' },
   suggestion: { type: Object, default: null },
   draft: { type: String, default: '' },
+  scheduleDate: { type: [String, Date], default: null },
 });
 
 const emit = defineEmits([
@@ -24,6 +25,7 @@ const emit = defineEmits([
   'parse-ai',
   'confirm-ai',
   'dismiss-ai',
+  'update:schedule-date',
 ]);
 
 const title = ref(null);
@@ -78,7 +80,12 @@ defineExpose({ focus });
           <button type="button" :aria-expanded="aiOpen" aria-controls="teacher-ai-panel" @click="openAi">AI 排课草稿</button>
         </div>
 
-        <ScheduleBoard :lessons="lessons" @select-lesson="(...args) => emit('open-lesson', ...args)" />
+        <ScheduleBoard
+          :lessons="lessons"
+          :selected-date="scheduleDate"
+          @select-lesson="(...args) => emit('open-lesson', ...args)"
+          @update:selected-date="emit('update:schedule-date', $event)"
+        />
 
         <section v-if="aiOpen" id="teacher-ai-panel" class="teacher-ai-workbench" aria-label="AI 排课草稿">
           <div class="teacher-ai-workbench__composer">

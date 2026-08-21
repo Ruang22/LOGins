@@ -1,11 +1,12 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
   lessons: { type: Array, default: () => [] },
+  selectedDate: { type: [String, Date], default: null },
 });
 
-const emit = defineEmits(['select-lesson']);
+const emit = defineEmits(['select-lesson', 'update:selected-date']);
 
 const pad = (value) => String(value).padStart(2, '0');
 const dateKey = (value) => {
@@ -31,9 +32,11 @@ const addDays = (value, count) => {
 const sortedLessons = computed(() => [...props.lessons].sort(
   (left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime(),
 ));
-const initialDay = sortedLessons.value[0]?.startsAt ?? new Date();
+const initialDay = props.selectedDate ?? sortedLessons.value[0]?.startsAt ?? new Date();
 const selectedDay = ref(dateKey(initialDay));
 const weekAnchor = ref(startOfWeek(initialDay));
+const userSelectedDay = ref(false);
+const hasHydratedLessons = ref(sortedLessons.value.length > 0);
 const weekDays = computed(() => Array.from({ length: 7 }, (_, index) => addDays(weekAnchor.value, index)));
 const selectedLessons = computed(() => sortedLessons.value.filter(
   (lesson) => dateKey(lesson.startsAt) === selectedDay.value,
@@ -57,18 +60,37 @@ const gradeLabel = (lesson) => {
 };
 const courseLabel = (lesson) => lesson.courseName || '英语课';
 
-function selectDay(day) {
+function moveToDay(day) {
   selectedDay.value = dateKey(day);
+  weekAnchor.value = startOfWeek(day);
+}
+
+function selectDay(day) {
+  userSelectedDay.value = true;
+  moveToDay(day);
+  emit('update:selected-date', selectedDay.value);
 }
 
 function changeWeek(offset) {
-  weekAnchor.value = addDays(weekAnchor.value, offset * 7);
-  selectedDay.value = dateKey(weekAnchor.value);
+  selectDay(addDays(weekAnchor.value, offset * 7));
 }
 
 function selectLesson(lesson, event) {
   emit('select-lesson', lesson.id, event);
 }
+
+watch(() => props.selectedDate, (value) => {
+  if (value) moveToDay(value);
+});
+
+watch(() => props.lessons, (lessons) => {
+  if (!lessons.length || hasHydratedLessons.value) return;
+  hasHydratedLessons.value = true;
+  if (userSelectedDay.value || props.selectedDate) return;
+  moveToDay([...lessons].sort(
+    (left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime(),
+  )[0].startsAt);
+}, { deep: true });
 </script>
 
 <template>
