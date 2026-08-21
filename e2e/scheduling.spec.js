@@ -9,8 +9,12 @@ async function selectTeacherWorkbench(page) {
 }
 
 async function preview(page, description) {
-  await page.getByRole('button', { name: 'AI 排课草稿' }).click();
-  await page.getByLabel('课程描述').fill(description);
+  const courseDescription = page.getByLabel('课程描述');
+  if (!(await courseDescription.isVisible())) {
+    await page.getByRole('button', { name: 'AI 排课草稿' }).click();
+  }
+  await expect(courseDescription).toBeVisible();
+  await courseDescription.fill(description);
   await page.getByRole('button', { name: '生成待确认草稿' }).click();
   await expect(page.getByRole('complementary', { name: 'AI 排课预览' })).toContainText('未排课草稿');
 }
