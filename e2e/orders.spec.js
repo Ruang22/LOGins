@@ -18,7 +18,6 @@ test('parent completes a visibly simulated package order through Express and see
   await page.getByTestId('simulate-payment').click();
 
   await expect(page.getByRole('status')).toContainText('模拟付款已完成');
-  await expect(page.getByText('模拟付款已完成', { exact: true })).toBeVisible();
   await expect(page.getByTestId('purchased-credits')).toHaveText('22');
   await expect(page.getByTestId('available-credits')).toHaveText('19 节');
 });

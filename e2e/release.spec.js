@@ -17,31 +17,39 @@ test('teacher workspace exposes labeled landmarks, a visible focus indicator, an
   await page.goto('/');
 
   await expect(page).toHaveTitle('AI 排课助手');
-  await expect(page.getByRole('heading', { name: '每周授课节奏' })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: '工作区' })).toBeVisible();
-  await expect(page.getByRole('region', { name: '每周课程表' })).toBeVisible();
-  await expect(page.getByLabel('描述课程')).toBeVisible();
+  await expect(page.getByTestId('role-gate')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '请选择您的身份' })).toBeVisible();
+  await page.getByTestId('choose-teacher').click();
 
-  const parentDashboard = page.getByRole('button', { name: '家长中心' });
+  await expect(page.getByTestId('teacher-shell')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '今天，按分钟上课' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '教师工作区' })).toBeVisible();
+  await expect(page.getByRole('region', { name: /课程$/ })).toBeVisible();
+
+  await expect(page.getByTestId('workbench-destination')).toBeFocused();
+  const aiSchedule = page.getByRole('button', { name: 'AI 排课草稿' });
+  await aiSchedule.focus();
+  await page.keyboard.press('Shift+Tab');
   await page.keyboard.press('Tab');
-  await page.keyboard.press('Tab');
-  await page.keyboard.press('Tab');
-  await expect(parentDashboard).toBeFocused();
-  const focus = await parentDashboard.evaluate((element) => {
+  await expect(aiSchedule).toBeFocused();
+  const focus = await aiSchedule.evaluate((element) => {
     const styles = getComputedStyle(element);
     return { color: styles.outlineColor, style: styles.outlineStyle, width: styles.outlineWidth };
   });
   expect(focus.style).toBe('solid');
   expect(focus.width).toBe('3px');
-  expect(focus.color).toBe('rgb(45, 108, 223)');
+  expect(focus.color).toBe('rgb(230, 166, 60)');
 
-  const contrast = await page.getByRole('button', { name: '教师工作台' }).evaluate((element) => {
+  const contrast = await page.getByRole('button', { name: '手动排课' }).evaluate((element) => {
     const styles = getComputedStyle(element);
     return { foreground: styles.color, background: styles.backgroundColor };
   });
   const foregroundLuminance = luminance(parseRgb(contrast.foreground));
   const backgroundLuminance = luminance(parseRgb(contrast.background));
   expect((Math.max(foregroundLuminance, backgroundLuminance) + 0.05) / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05)).toBeGreaterThanOrEqual(4.5);
+
+  await aiSchedule.click();
+  await expect(page.getByRole('textbox', { name: '课程描述' })).toBeVisible();
 });
 
 test.describe('mobile release checks', () => {
@@ -49,10 +57,12 @@ test.describe('mobile release checks', () => {
 
   test('parent workspace remains usable without document-level horizontal scrolling on a mobile viewport', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: '家长中心' }).click();
+    await expect(page.getByTestId('role-gate')).toBeVisible();
+    await page.getByTestId('choose-parent').click();
 
-    await expect(page.getByRole('heading', { name: '家庭课程中心' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: '添加课程套餐' })).toBeVisible();
-    expect(await page.locator('body').evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+    await expect(page.getByTestId('parent-shell')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /课程轨迹$/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '添加课时' })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
   });
 });
