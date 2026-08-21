@@ -1,9 +1,11 @@
 const API_ROOT = import.meta.env.VITE_API_ROOT ?? '/api';
 
 async function request(path, { account, method = 'GET', body } = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (account) headers['x-demo-user'] = account;
   const response = await fetch(`${API_ROOT}${path}`, {
     method,
-    headers: { 'Content-Type': 'application/json', 'x-demo-user': account },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await response.json().catch(() => ({}));
@@ -12,17 +14,18 @@ async function request(path, { account, method = 'GET', body } = {}) {
 }
 
 export const api = {
+  accounts: (role) => request(`/accounts?role=${encodeURIComponent(role)}`),
   teacher: {
-    schedule: () => request('/teacher/schedule', { account: 'teacher-demo' }),
-    students: () => request('/teacher/students', { account: 'teacher-demo' }),
-    orders: () => request('/teacher/orders', { account: 'teacher-demo' }),
-    parseSchedule: (text) => request('/ai/parse-schedule', { account: 'teacher-demo', method: 'POST', body: { text } }),
-    createLesson: (lesson) => request('/teacher/lessons', { account: 'teacher-demo', method: 'POST', body: lesson }),
-    updateLesson: (id, action) => request(`/teacher/lessons/${id}`, { account: 'teacher-demo', method: 'PATCH', body: { action } }),
+    schedule: (account = 'teacher-demo') => request('/teacher/schedule', { account }),
+    students: (account = 'teacher-demo') => request('/teacher/students', { account }),
+    orders: (account = 'teacher-demo') => request('/teacher/orders', { account }),
+    parseSchedule: (text, account = 'teacher-demo') => request('/ai/parse-schedule', { account, method: 'POST', body: { text } }),
+    createLesson: (lesson, account = 'teacher-demo') => request('/teacher/lessons', { account, method: 'POST', body: lesson }),
+    updateLesson: (id, action, account = 'teacher-demo') => request(`/teacher/lessons/${id}`, { account, method: 'PATCH', body: { action } }),
   },
   parent: {
-    dashboard: () => request('/parent/dashboard', { account: 'parent-demo' }),
-    createOrder: (order) => request('/parent/orders', { account: 'parent-demo', method: 'POST', body: order }),
-    simulatePayment: (id) => request(`/parent/orders/${id}/simulate-payment`, { account: 'parent-demo', method: 'POST' }),
+    dashboard: (account = 'parent-demo') => request('/parent/dashboard', { account }),
+    createOrder: (order, account = 'parent-demo') => request('/parent/orders', { account, method: 'POST', body: order }),
+    simulatePayment: (id, account = 'parent-demo') => request(`/parent/orders/${id}/simulate-payment`, { account, method: 'POST' }),
   },
 };

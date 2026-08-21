@@ -29,33 +29,63 @@ after(async () => {
   await prisma.$disconnect();
 });
 
-test('parent dashboard contains only the demo parent student data', async () => {
+test('parent dashboard returns only the earliest-created active child and that child lessons', async () => {
   await seedDatabase(prisma);
   const otherStudent = await createOtherParentStudent();
-  const [teacher, demoStudent] = await Promise.all([
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const [teacher, parent] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { email: 'maya.chen.demo.teacher@example.test' } }),
-    prisma.student.findFirstOrThrow({
-      where: { parent: { email: 'jordan.rivera.demo.parent@example.test' } },
-      orderBy: { name: 'asc' },
+    prisma.user.create({
+      data: { name: `Scoped Parent ${suffix}`, email: `scoped-parent-${suffix}@example.test`, role: 'parent' },
     }),
   ]);
+  createdIds.users.push(parent.id);
+  const inactiveStudent = await prisma.student.create({
+    data: {
+      parentId: parent.id,
+      name: `Inactive Student ${suffix}`,
+      grade: 7,
+      isActive: false,
+      createdAt: new Date('2000-01-01T00:00:00.000Z'),
+    },
+  });
+  const firstActiveStudent = await prisma.student.create({
+    data: {
+      parentId: parent.id,
+      name: `First Active Student ${suffix}`,
+      grade: 8,
+      createdAt: new Date('2001-01-01T00:00:00.000Z'),
+    },
+  });
+  const laterActiveStudent = await prisma.student.create({
+    data: {
+      parentId: parent.id,
+      name: `Later Active Student ${suffix}`,
+      grade: 9,
+      createdAt: new Date('2002-01-01T00:00:00.000Z'),
+    },
+  });
+  createdIds.students.push(inactiveStudent.id, firstActiveStudent.id, laterActiveStudent.id);
   const lesson = await prisma.lesson.create({
     data: {
       teacherId: teacher.id,
       startsAt: new Date('2032-01-02T09:00:00.000Z'),
-      participants: { create: [{ studentId: demoStudent.id }] },
+      participants: { create: [{ studentId: firstActiveStudent.id }] },
     },
   });
   createdIds.lessons.push(lesson.id);
 
   const response = await request(createApp())
     .get('/api/parent/dashboard')
-    .set('x-demo-user', 'parent-demo')
+    .set('x-demo-user', parent.id)
     .expect(200);
 
-  assert.equal(response.body.parent.email, 'jordan.rivera.demo.parent@example.test');
-  assert.equal(response.body.students.length, 2);
+  assert.equal(response.body.parent.email, parent.email);
+  assert.equal(response.body.students.length, 1);
+  assert.equal(response.body.students[0].id, firstActiveStudent.id);
   assert.ok(response.body.students.every((student) => student.id !== otherStudent.id));
+  assert.ok(response.body.students.every((student) => student.id !== inactiveStudent.id));
+  assert.ok(response.body.students.every((student) => student.id !== laterActiveStudent.id));
   assert.ok(response.body.students.every((student) => Array.isArray(student.lessons)));
   assert.ok(response.body.students.some((student) => student.lessons.some(({ id }) => id === lesson.id)));
 });

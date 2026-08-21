@@ -27,8 +27,9 @@ export function createParentRouter() {
   router.get('/dashboard', async (req, res, next) => {
     try {
       const students = await prisma.student.findMany({
-        where: { parentId: req.demoUser.id },
-        orderBy: [{ grade: 'asc' }, { name: 'asc' }],
+        where: { parentId: req.demoUser.id, isActive: true },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        take: 1,
         include: lessonInclude,
       });
       res.json({
