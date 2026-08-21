@@ -46,6 +46,7 @@ model Student {
   parentId        String
   name            String
   grade           Int
+  isActive        Boolean             @default(true)
   totalCredits    Int                 @default(0)
   attendedCredits Int                 @default(0)
   reservedCredits Int                 @default(0)

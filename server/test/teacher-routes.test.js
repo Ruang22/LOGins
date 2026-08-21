@@ -50,7 +50,9 @@ test('teacher creates, views, and completes a lesson through teacher routes', as
     .get('/api/teacher/students')
     .set('x-demo-user', 'teacher-demo')
     .expect(200);
-  assert.ok(students.body.some(({ id }) => id === student.id));
+  const listedStudent = students.body.find(({ id }) => id === student.id);
+  assert.equal(listedStudent.isActive, true);
+  assert.equal(listedStudent.parent.email.startsWith('route-parent-'), true);
   assert.ok(students.body.every((listedStudent) => !Object.hasOwn(listedStudent, 'parentId')));
 
   const created = await request(app)
@@ -73,4 +75,68 @@ test('teacher creates, views, and completes a lesson through teacher routes', as
     .send({ action: 'complete' })
     .expect(200);
   assert.equal(completed.body.status, 'completed');
+});
+
+test('teacher creates, edits, and archives a student through teacher routes', async () => {
+  await seedDatabase(prisma);
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const app = createApp();
+
+  const created = await request(app)
+    .post('/api/teacher/students')
+    .set('x-demo-user', 'teacher-demo')
+    .send({
+      name: `Managed ${suffix.slice(-8)}`,
+      grade: 8,
+      parentName: `Parent ${suffix.slice(-8)}`,
+      parentEmail: `managed-parent-${suffix}@example.test`,
+      totalCredits: 12,
+    })
+    .expect(201);
+  createdIds.students.push(created.body.id);
+  createdIds.users.push(created.body.parent.id);
+  assert.equal(created.body.isActive, true);
+
+  const updated = await request(app)
+    .patch(`/api/teacher/students/${created.body.id}`)
+    .set('x-demo-user', 'teacher-demo')
+    .send({ grade: 9, totalCredits: 10 })
+    .expect(200);
+  assert.equal(updated.body.grade, 9);
+  assert.equal(updated.body.totalCredits, 10);
+
+  const archived = await request(app)
+    .delete(`/api/teacher/students/${created.body.id}`)
+    .set('x-demo-user', 'teacher-demo')
+    .expect(200);
+  assert.equal(archived.body.isActive, false);
+});
+
+test('teacher student routes reject invalid input and unknown students', async () => {
+  await seedDatabase(prisma);
+  const app = createApp();
+
+  await request(app)
+    .post('/api/teacher/students')
+    .set('x-demo-user', 'teacher-demo')
+    .send({
+      name: 'Invalid Student',
+      grade: 8,
+      parentName: 'Invalid Parent',
+      parentEmail: 'invalid@example.test',
+      totalCredits: 1,
+      unexpected: true,
+    })
+    .expect(400);
+
+  await request(app)
+    .patch('/api/teacher/students/unknown-student')
+    .set('x-demo-user', 'teacher-demo')
+    .send({ grade: 8 })
+    .expect(404, { code: 'STUDENT_NOT_FOUND' });
+
+  await request(app)
+    .delete('/api/teacher/students/unknown-student')
+    .set('x-demo-user', 'teacher-demo')
+    .expect(404, { code: 'STUDENT_NOT_FOUND' });
 });

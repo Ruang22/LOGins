@@ -5,7 +5,14 @@ import {
   SchedulingError,
   transitionLesson,
 } from '../services/scheduling-service.js';
+import {
+  archiveStudent,
+  createStudent,
+  StudentError,
+  updateStudent,
+} from '../services/student-service.js';
 import { requireRole } from '../middleware/demo-auth.js';
+import { ZodError } from 'zod';
 
 const lessonInclude = {
   participants: {
@@ -19,6 +26,21 @@ const lessonInclude = {
 function respondToSchedulingError(error, res) {
   if (!(error instanceof SchedulingError)) return false;
   const status = error.code === 'FORBIDDEN' ? 403 : error.code === 'LESSON_NOT_FOUND' ? 404 : 400;
+  res.status(status).json({ code: error.code });
+  return true;
+}
+
+function respondToStudentError(error, res) {
+  if (error instanceof ZodError) {
+    res.status(400).json({ code: 'INVALID_STUDENT' });
+    return true;
+  }
+  if (!(error instanceof StudentError)) return false;
+  const status = error.code === 'FORBIDDEN'
+    ? 403
+    : error.code === 'STUDENT_NOT_FOUND'
+      ? 404
+      : 400;
   res.status(status).json({ code: error.code });
   return true;
 }
@@ -48,14 +70,43 @@ export function createTeacherRouter() {
           id: true,
           name: true,
           grade: true,
+          parent: { select: { id: true, name: true, email: true } },
           totalCredits: true,
           attendedCredits: true,
           reservedCredits: true,
+          isActive: true,
         },
       });
       res.json(students);
     } catch (error) {
       next(error);
+    }
+  });
+
+  router.post('/students', async (req, res, next) => {
+    try {
+      const student = await createStudent(req.body ?? {}, req.demoUser);
+      res.status(201).json(student);
+    } catch (error) {
+      if (!respondToStudentError(error, res)) next(error);
+    }
+  });
+
+  router.patch('/students/:id', async (req, res, next) => {
+    try {
+      const student = await updateStudent({ studentId: req.params.id, input: req.body ?? {} }, req.demoUser);
+      res.json(student);
+    } catch (error) {
+      if (!respondToStudentError(error, res)) next(error);
+    }
+  });
+
+  router.delete('/students/:id', async (req, res, next) => {
+    try {
+      const student = await archiveStudent({ studentId: req.params.id }, req.demoUser);
+      res.json(student);
+    } catch (error) {
+      if (!respondToStudentError(error, res)) next(error);
     }
   });
 
