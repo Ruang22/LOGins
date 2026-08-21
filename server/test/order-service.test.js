@@ -187,3 +187,21 @@ test('teacher manual orders use catalog facts and cannot be confirmed by another
     (error) => error.code === 'INVALID_PAYMENT_MODE',
   );
 });
+
+test('a non-owner cannot learn that another teacher manual order is already paid', async () => {
+  const { teacher, otherTeacher, student } = await createFixture();
+  const order = await createTeacherManualOrder({
+    studentId: student.id,
+    packageName: '已支付课程',
+    creditQuantity: 4,
+    amountCents: 120000,
+    paymentMode: 'manual_qr',
+  }, teacher);
+  createdIds.orders.push(order.id);
+  await confirmTeacherManualOrder({ orderId: order.id }, teacher);
+
+  await assert.rejects(
+    confirmTeacherManualOrder({ orderId: order.id }, otherTeacher),
+    (error) => error.code === 'FORBIDDEN' && error.code !== 'ORDER_ALREADY_PAID',
+  );
+});

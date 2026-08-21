@@ -126,13 +126,13 @@ export async function confirmTeacherManualOrder({ orderId } = {}, teacherInput) 
     await lock(tx, `order:${orderId}`);
     const order = await tx.order.findUnique({ where: { id: orderId } });
     if (!order) throw new OrderError('ORDER_NOT_FOUND');
-    if (order.status === 'paid') throw new OrderError('ORDER_ALREADY_PAID');
-    if (order.status !== 'pending') throw new OrderError('ORDER_NOT_PENDING');
     if (order.paymentMode !== 'manual_qr') throw new OrderError('INVALID_PAYMENT_MODE');
     const [ownership] = await tx.$queryRaw`
       SELECT "teacherId" FROM "Order" WHERE "id" = ${order.id}
     `;
     if (ownership?.teacherId !== teacher.id) throw new OrderError('FORBIDDEN');
+    if (order.status === 'paid') throw new OrderError('ORDER_ALREADY_PAID');
+    if (order.status !== 'pending') throw new OrderError('ORDER_NOT_PENDING');
 
     const paidOrder = await tx.order.update({
       where: { id: order.id },
