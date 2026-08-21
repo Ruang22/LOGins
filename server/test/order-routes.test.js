@@ -63,3 +63,65 @@ test('teacher order review cannot confirm a simulated payment', async () => {
     .set('x-demo-user', 'teacher-demo')
     .expect(404);
 });
+
+test('teacher creates and confirms a manual QR order only once', async () => {
+  await seedDatabase(prisma);
+  const student = await prisma.student.findFirstOrThrow({
+    where: { parent: { email: 'jordan.rivera.demo.parent@example.test' } },
+    orderBy: { name: 'asc' },
+  });
+  const app = createApp();
+
+  const created = await request(app)
+    .post('/api/teacher/orders/manual')
+    .set('x-demo-user', 'teacher-demo')
+    .send({
+      studentId: student.id,
+      packageName: '周末巩固班',
+      creditQuantity: 4,
+      amountCents: 120000,
+      paymentMode: 'manual_qr',
+    })
+    .expect(201);
+  createdOrderIds.push(created.body.id);
+  assert.equal(created.body.status, 'pending');
+  assert.equal(created.body.paymentMode, 'manual_qr');
+
+  const paid = await request(app)
+    .patch(`/api/teacher/orders/${created.body.id}/confirm-manual`)
+    .set('x-demo-user', 'teacher-demo')
+    .expect(200);
+  assert.equal(paid.body.status, 'paid');
+  assert.ok(paid.body.paidAt);
+
+  await request(app)
+    .patch(`/api/teacher/orders/${created.body.id}/confirm-manual`)
+    .set('x-demo-user', 'teacher-demo')
+    .expect(400, { code: 'ORDER_ALREADY_PAID' });
+});
+
+test('teacher manual order route uses catalog facts and rejects parent access', async () => {
+  await seedDatabase(prisma);
+  const student = await prisma.student.findFirstOrThrow({
+    where: { parent: { email: 'jordan.rivera.demo.parent@example.test' } },
+    orderBy: { name: 'asc' },
+  });
+  const app = createApp();
+
+  const created = await request(app)
+    .post('/api/teacher/orders/manual')
+    .set('x-demo-user', 'teacher-demo')
+    .send({ studentId: student.id, packageId: 'demo-10', packageName: 'Forged', creditQuantity: 9999, amountCents: 1, paymentMode: 'manual_qr' })
+    .expect(201);
+  createdOrderIds.push(created.body.id);
+  assert.deepEqual(
+    { packageName: created.body.packageName, creditQuantity: created.body.creditQuantity, amountCents: created.body.amountCents },
+    { packageName: 'Demo 10 Lesson Package', creditQuantity: 10, amountCents: 50000 },
+  );
+
+  await request(app)
+    .post('/api/teacher/orders/manual')
+    .set('x-demo-user', 'parent-demo')
+    .send({ studentId: student.id, packageName: '无权登记', creditQuantity: 1, amountCents: 0, paymentMode: 'manual_qr' })
+    .expect(403, { code: 'FORBIDDEN' });
+});

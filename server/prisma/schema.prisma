@@ -87,6 +87,7 @@ model LessonParticipant {
 model Order {
   id             String      @id @default(cuid())
   parentId       String
+  teacherId      String?
   studentId      String
   packageName    String
   packageId      String

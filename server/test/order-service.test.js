@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
 import './support/test-database.js';
 import {
+  confirmTeacherManualOrder,
   confirmSimulationOrder,
+  createTeacherManualOrder,
   createOrder,
 } from '../src/services/order-service.js';
 
@@ -15,6 +17,9 @@ async function createFixture() {
   const teacher = await prisma.user.create({
     data: { name: `Order Teacher ${suffix}`, email: `order-teacher-${suffix}@example.test`, role: 'teacher' },
   });
+  const otherTeacher = await prisma.user.create({
+    data: { name: `Other Order Teacher ${suffix}`, email: `other-order-teacher-${suffix}@example.test`, role: 'teacher' },
+  });
   const parent = await prisma.user.create({
     data: { name: `Order Parent ${suffix}`, email: `order-parent-${suffix}@example.test`, role: 'parent' },
   });
@@ -24,9 +29,9 @@ async function createFixture() {
   const student = await prisma.student.create({
     data: { parentId: parent.id, name: `Order Student ${suffix}`, grade: 8, totalCredits: 2 },
   });
-  createdIds.users.push(teacher.id, parent.id, otherParent.id);
+  createdIds.users.push(teacher.id, otherTeacher.id, parent.id, otherParent.id);
   createdIds.students.push(student.id);
-  return { teacher, parent, otherParent, student };
+  return { teacher, otherTeacher, parent, otherParent, student };
 }
 
 after(async () => {
@@ -119,4 +124,66 @@ test('a legacy pending order credits its catalog quantity instead of its persist
   await confirmSimulationOrder(legacyOrder.id, parent);
 
   assert.equal((await prisma.student.findUniqueOrThrow({ where: { id: student.id } })).totalCredits, 12);
+});
+
+test('teacher confirms a manual-qr order exactly once and adds its registered credits', async () => {
+  const { teacher, student } = await createFixture();
+  const order = await createTeacherManualOrder({
+    studentId: student.id,
+    packageName: '暑期一对一',
+    creditQuantity: 6,
+    amountCents: 180000,
+    paymentMode: 'manual_qr',
+  }, teacher);
+  createdIds.orders.push(order.id);
+
+  const paid = await confirmTeacherManualOrder({ orderId: order.id }, teacher);
+  assert.equal(paid.status, 'paid');
+  assert.equal(paid.paymentMode, 'manual_qr');
+  assert.ok(paid.paidAt instanceof Date);
+  assert.equal((await prisma.student.findUniqueOrThrow({ where: { id: student.id } })).totalCredits, 8);
+
+  await assert.rejects(
+    confirmTeacherManualOrder({ orderId: order.id }, teacher),
+    (error) => error.code === 'ORDER_ALREADY_PAID',
+  );
+  assert.equal((await prisma.student.findUniqueOrThrow({ where: { id: student.id } })).totalCredits, 8);
+});
+
+test('teacher manual orders use catalog facts and cannot be confirmed by another teacher, parent, or simulation flow', async () => {
+  const { teacher, otherTeacher, parent, student } = await createFixture();
+  const catalogOrder = await createTeacherManualOrder({
+    studentId: student.id,
+    packageId: 'demo-20',
+    packageName: 'Forged package',
+    creditQuantity: 99999,
+    amountCents: 1,
+    paymentMode: 'manual_qr',
+  }, teacher);
+  createdIds.orders.push(catalogOrder.id);
+  assert.deepEqual(
+    {
+      packageId: catalogOrder.packageId,
+      packageName: catalogOrder.packageName,
+      creditQuantity: catalogOrder.creditQuantity,
+      amountCents: catalogOrder.amountCents,
+    },
+    { packageId: 'demo-20', packageName: 'Demo 20 Lesson Package', creditQuantity: 20, amountCents: 92000 },
+  );
+
+  await assert.rejects(
+    confirmTeacherManualOrder({ orderId: catalogOrder.id }, otherTeacher),
+    (error) => error.code === 'FORBIDDEN',
+  );
+  await assert.rejects(
+    confirmTeacherManualOrder({ orderId: catalogOrder.id }, parent),
+    (error) => error.code === 'FORBIDDEN',
+  );
+
+  const simulationOrder = await createOrder({ studentId: student.id, packageId: 'demo-10' }, parent);
+  createdIds.orders.push(simulationOrder.id);
+  await assert.rejects(
+    confirmTeacherManualOrder({ orderId: simulationOrder.id }, teacher),
+    (error) => error.code === 'INVALID_PAYMENT_MODE',
+  );
 });
