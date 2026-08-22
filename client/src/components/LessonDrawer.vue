@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue';
 
 const props = defineProps({ lesson: { type: Object, required: true }, participants: { type: Function, required: true }, formatDate: { type: Function, required: true }, loading: Boolean });
-const emit = defineEmits(['close', 'complete', 'cancel']);
+const emit = defineEmits(['close', 'complete', 'cancel', 'edit']);
 const dialog = ref(null); const closeButton = ref(null);
 
 function trapFocus(event) {
@@ -24,7 +24,11 @@ onMounted(() => closeButton.value?.focus());
       <button ref="closeButton" class="drawer-close" aria-label="关闭课程详情" @click="emit('close')">×</button>
       <p class="preview-stamp">已排课程</p><h2 id="lesson-dialog-title">{{ participants(lesson) }}</h2>
       <p>{{ formatDate(lesson.startsAt) }} · {{ lesson.durationMinutes }} 分钟</p>
-      <div class="preview-actions"><button class="button secondary" :disabled="loading" @click="emit('cancel')">取消预约</button><button class="button confirm" :disabled="loading" @click="emit('complete')">标记为已完成</button></div>
+      <div class="preview-actions">
+        <button v-if="lesson.status === 'scheduled'" class="button secondary" data-testid="edit-lesson" :disabled="loading" @click="emit('edit')">编辑课程</button>
+        <button class="button secondary" :disabled="loading" @click="emit('cancel')">取消预约</button>
+        <button class="button confirm" :disabled="loading" @click="emit('complete')">标记为已完成</button>
+      </div>
     </section>
   </div>
 </template>

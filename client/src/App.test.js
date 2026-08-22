@@ -9,6 +9,21 @@ const accounts = {
   parent: [{ id: 'parent-local-id', name: '林家长', email: 'parent@example.test', role: 'parent' }],
 };
 
+const managedStudent = {
+  id: 'student-a',
+  name: '林一',
+  grade: 8,
+  parent: { name: '林家长', email: 'lin@example.test' },
+  totalCredits: 12,
+  attendedCredits: 2,
+  reservedCredits: 1,
+  isActive: true,
+};
+
+async function nextFrame() {
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+}
+
 async function chooseRole(wrapper, role) {
   vi.spyOn(api, 'accounts').mockResolvedValueOnce(accounts[role]);
   await wrapper.get(`[data-testid="choose-${role}"]`).trigger('click');
@@ -164,5 +179,98 @@ describe('App', () => {
 
     expect(dashboard).toHaveBeenCalledWith('parent-restored-id');
     expect(wrapper.get('[data-testid="parent-shell"]').exists()).toBe(true);
+  });
+
+  it('手动排课写入服务器，刷新后关闭并恢复触发按钮焦点', async () => {
+    vi.spyOn(api.teacher, 'schedule').mockResolvedValue([]);
+    vi.spyOn(api.teacher, 'students').mockResolvedValue([managedStudent]);
+    vi.spyOn(api.teacher, 'orders').mockResolvedValue([]);
+    const createLesson = vi.spyOn(api.teacher, 'createLesson').mockResolvedValue({ id: 'lesson-a' });
+    const wrapper = mount(App, { attachTo: document.body, global: { stubs: { RoleGate: false } } });
+
+    await chooseRole(wrapper, 'teacher');
+    const trigger = wrapper.get('[data-testid="open-manual-schedule"]');
+    await trigger.trigger('click');
+    await wrapper.get('[name="startDate"]').setValue('2032-03-01');
+    await wrapper.get('[name="startTime"]').setValue('18:05');
+    await wrapper.get('[data-testid="student-student-a"]').setValue(true);
+    await wrapper.get('[role="dialog"] form').trigger('submit');
+    await flushPromises();
+    await nextFrame();
+
+    expect(createLesson).toHaveBeenCalledWith(expect.objectContaining({
+      studentIds: ['student-a'],
+      startAt: expect.stringMatching(/^2032-03-01T18:05:00/),
+      durationMinutes: 60,
+    }), 'teacher-local-id');
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+    expect(document.activeElement).toBe(trigger.element);
+    wrapper.unmount();
+  });
+
+  it('接通学生新增与停用写接口', async () => {
+    vi.spyOn(api.teacher, 'schedule').mockResolvedValue([]);
+    vi.spyOn(api.teacher, 'students').mockResolvedValue([managedStudent]);
+    vi.spyOn(api.teacher, 'orders').mockResolvedValue([]);
+    const createStudent = vi.spyOn(api.teacher, 'createStudent').mockResolvedValue(managedStudent);
+    const archiveStudent = vi.spyOn(api.teacher, 'archiveStudent').mockResolvedValue({ ...managedStudent, isActive: false });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const wrapper = mount(App, { global: { stubs: { RoleGate: false } } });
+
+    await chooseRole(wrapper, 'teacher');
+    await wrapper.findAll('.teacher-nav button').find((button) => button.text().includes('学员')).trigger('click');
+    await wrapper.get('[data-testid="manage-students"]').trigger('click');
+    await wrapper.get('[name="name"]').setValue('周然');
+    await wrapper.get('[name="grade"]').setValue('8');
+    await wrapper.get('[name="parentName"]').setValue('周家长');
+    await wrapper.get('[name="parentEmail"]').setValue('zhou@example.test');
+    await wrapper.get('[name="totalCredits"]').setValue('10');
+    await wrapper.get('[role="dialog"] form').trigger('submit');
+    await flushPromises();
+
+    expect(createStudent).toHaveBeenCalledWith(expect.objectContaining({ name: '周然', totalCredits: 10 }), 'teacher-local-id');
+
+    await wrapper.get('[data-testid="manage-students"]').trigger('click');
+    await wrapper.get('[data-testid="archive-student-a"]').trigger('click');
+    await flushPromises();
+
+    expect(archiveStudent).toHaveBeenCalledWith('student-a', 'teacher-local-id');
+  });
+
+  it('接通扫码登记与教师确认，并始终使用 manual_qr', async () => {
+    const pendingOrder = {
+      id: 'order-a',
+      teacherId: 'teacher-local-id',
+      student: { name: '林一' },
+      packageName: '冲刺课时包',
+      creditQuantity: 6,
+      amountCents: 128050,
+      paymentMode: 'manual_qr',
+      status: 'pending',
+      createdAt: '2032-03-01T10:00:00Z',
+      paidAt: null,
+    };
+    vi.spyOn(api.teacher, 'schedule').mockResolvedValue([]);
+    vi.spyOn(api.teacher, 'students').mockResolvedValue([managedStudent]);
+    vi.spyOn(api.teacher, 'orders').mockResolvedValue([pendingOrder]);
+    const createManualOrder = vi.spyOn(api.teacher, 'createManualOrder').mockResolvedValue(pendingOrder);
+    const confirmManualOrder = vi.spyOn(api.teacher, 'confirmManualOrder').mockResolvedValue({ ...pendingOrder, status: 'paid' });
+    const wrapper = mount(App, { global: { stubs: { RoleGate: false } } });
+
+    await chooseRole(wrapper, 'teacher');
+    await wrapper.findAll('.teacher-nav button').find((button) => button.text().includes('订单')).trigger('click');
+    await wrapper.get('[data-testid="open-teacher-order"]').trigger('click');
+    await wrapper.get('[name="studentId"]').setValue('student-a');
+    await wrapper.get('[value="manual"]').setValue();
+    await wrapper.get('[name="packageName"]').setValue('冲刺课时包');
+    await wrapper.get('[name="creditQuantity"]').setValue('6');
+    await wrapper.get('[name="amountYuan"]').setValue('1280.50');
+    await wrapper.get('[role="dialog"] form').trigger('submit');
+    await flushPromises();
+
+    expect(createManualOrder).toHaveBeenCalledWith(expect.objectContaining({ paymentMode: 'manual_qr', amountCents: 128050 }), 'teacher-local-id');
+    await wrapper.get('[data-testid="confirm-order-a"]').trigger('click');
+    await flushPromises();
+    expect(confirmManualOrder).toHaveBeenCalledWith('order-a', 'teacher-local-id');
   });
 });

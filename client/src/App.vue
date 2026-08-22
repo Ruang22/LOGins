@@ -2,8 +2,11 @@
 import { computed, nextTick, onMounted, ref } from 'vue';
 import { api } from './api.js';
 import LessonDrawer from './components/LessonDrawer.vue';
+import ManualScheduleSheet from './components/ManualScheduleSheet.vue';
 import ParentShell from './components/ParentShell.vue';
 import RoleGate from './components/RoleGate.vue';
+import StudentManager from './components/StudentManager.vue';
+import TeacherOrderSheet from './components/TeacherOrderSheet.vue';
 import TeacherShell from './components/TeacherShell.vue';
 import { createRoleSession } from './state/role-session.js';
 
@@ -12,12 +15,14 @@ const loading = ref(false); const error = ref(''); const notice = ref('');
 const pendingRole = ref(null); const accountChoices = ref([]); const accountLoading = ref(false); const accountError = ref('');
 const teacher = ref({ lessons: [], students: [], orders: [], suggestion: null, draft: '' });
 const parent = ref({ data: null, order: null }); const selectedLesson = ref(null); const lessonTrigger = ref(null);
+const workflow = ref(null); const workflowLesson = ref(null); const workflowTrigger = ref(null);
 const workbenchDestination = ref(null);
 const roleGateDestination = ref(null);
 const teacherScheduleDate = ref(null);
 const formatDate = (v) => new Intl.DateTimeFormat('zh-CN', { weekday: 'short', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(v));
 const participants = (lesson) => lesson.participants?.map(({ student }) => student.name).join('、') ?? '学生课程';
 const child = computed(() => parent.value.data?.students?.[0]);
+const activeStudents = computed(() => teacher.value.students.filter(({ isActive }) => isActive !== false));
 async function loadTeacher() { const [lessons, students, orders] = await Promise.all([api.teacher.schedule(accountId.value), api.teacher.students(accountId.value), api.teacher.orders(accountId.value)]); teacher.value = { ...teacher.value, lessons, students, orders }; }
 async function loadParent() { parent.value = { ...parent.value, data: await api.parent.dashboard(accountId.value) }; }
 async function load() { loading.value = true; error.value = ''; try { role.value === 'teacher' ? await loadTeacher() : await loadParent(); } catch (e) { error.value = `无法加载此演示内容（${e.message}）。请启动 API 后重试。`; } finally { loading.value = false; } }
@@ -28,6 +33,77 @@ function closeDrawer() {
   const trigger = lessonTrigger.value;
   selectedLesson.value = null;
   nextTick(() => requestAnimationFrame(() => trigger?.focus()));
+}
+function openWorkflow(name, event, lesson = null) {
+  workflowTrigger.value = event?.currentTarget ?? event ?? document.activeElement;
+  workflowLesson.value = lesson;
+  workflow.value = name;
+}
+function closeWorkflow() {
+  const trigger = workflowTrigger.value;
+  workflow.value = null;
+  workflowLesson.value = null;
+  workflowTrigger.value = null;
+  nextTick(() => requestAnimationFrame(() => trigger?.focus()));
+}
+function openManualSchedule(event) { openWorkflow('schedule', event); }
+function openStudentManager(event) { openWorkflow('students', event); }
+function openTeacherOrder(event) { openWorkflow('order', event); }
+function editSelectedLesson() {
+  const lesson = selectedLesson.value;
+  const trigger = lessonTrigger.value;
+  selectedLesson.value = null;
+  lessonTrigger.value = null;
+  openWorkflow('schedule', trigger, lesson);
+}
+async function saveManualLesson(payload) {
+  loading.value = true; error.value = '';
+  try {
+    if (workflowLesson.value) await api.teacher.editLesson(workflowLesson.value.id, payload, accountId.value);
+    else await api.teacher.createLesson(payload, accountId.value);
+    teacherScheduleDate.value = payload.startAt;
+    await loadTeacher();
+    notice.value = workflowLesson.value ? '课程修改已保存。' : '手动排课已保存。';
+    closeWorkflow();
+  } catch (e) {
+    error.value = `无法保存课程（${e.message}）。请检查年级、课时与时间冲突。`;
+  } finally { loading.value = false; }
+}
+async function createStudent(payload) {
+  loading.value = true; error.value = '';
+  try { await api.teacher.createStudent(payload, accountId.value); await loadTeacher(); notice.value = '学员已新增。'; closeWorkflow(); }
+  catch (e) { error.value = `无法新增学员（${e.message}）。`; }
+  finally { loading.value = false; }
+}
+async function updateStudent({ id, input }) {
+  loading.value = true; error.value = '';
+  try { await api.teacher.updateStudent(id, input, accountId.value); await loadTeacher(); notice.value = '学员资料已更新。'; closeWorkflow(); }
+  catch (e) { error.value = `无法更新学员（${e.message}）。`; }
+  finally { loading.value = false; }
+}
+async function archiveStudent(id) {
+  loading.value = true; error.value = '';
+  try { await api.teacher.archiveStudent(id, accountId.value); await loadTeacher(); notice.value = '学员已停用，历史记录仍保留。'; closeWorkflow(); }
+  catch (e) { error.value = `无法停用学员（${e.message}）。`; }
+  finally { loading.value = false; }
+}
+async function createManualOrder(payload) {
+  loading.value = true; error.value = '';
+  try { await api.teacher.createManualOrder(payload, accountId.value); await loadTeacher(); notice.value = '扫码登记（模拟）订单已创建，等待明确确认。'; closeWorkflow(); }
+  catch (e) { error.value = `无法登记订单（${e.message}）。`; }
+  finally { loading.value = false; }
+}
+async function confirmManualOrder(id, event) {
+  const trigger = event?.currentTarget ?? event;
+  loading.value = true; error.value = '';
+  try {
+    await api.teacher.confirmManualOrder(id, accountId.value);
+    await loadTeacher();
+    notice.value = '扫码登记（模拟）已确认，服务器课时余额已刷新。';
+    await nextTick();
+    requestAnimationFrame(() => trigger?.focus());
+  } catch (e) { error.value = `无法确认订单（${e.message}）。`; }
+  finally { loading.value = false; }
 }
 async function transition(action) { if (!selectedLesson.value) return; loading.value = true; try { await api.teacher.updateLesson(selectedLesson.value.id, action, accountId.value); closeDrawer(); notice.value = `课程已${action === 'complete' ? '完成' : '取消'}。`; await loadTeacher(); } catch (e) { error.value = `无法${action === 'complete' ? '完成' : '取消'}课程（${e.message}）。`; } finally { loading.value = false; } }
 async function purchase(option) { if (!child.value) return; loading.value = true; try { parent.value.order = await api.parent.createOrder({ studentId: child.value.id, packageId: option.packageId }, accountId.value); } catch (e) { error.value = `无法创建演示订单（${e.message}）。`; } finally { loading.value = false; } }
@@ -66,7 +142,6 @@ async function cancelAccountChoice() {
   roleGateDestination.value?.focus();
 }
 async function changeRole() { resetRole(); pendingRole.value = null; accountChoices.value = []; notice.value = ''; error.value = ''; await nextTick(); roleGateDestination.value?.focus(); }
-function openManualSchedule() { notice.value = '手动排课仍在原型阶段，当前不会向服务器写入课程。'; }
 function openAi() { notice.value = 'AI 只生成待确认草稿；确认前不会更改课表或课时。'; }
 onMounted(() => {
   if (role.value && accountId.value) load();
@@ -107,10 +182,11 @@ onMounted(() => {
       <button class="secondary" type="button" @click="cancelAccountChoice">返回身份选择</button>
     </div>
   </section>
-  <main v-if="role" class="app-shell" :class="{ 'app-shell--teacher': role === 'teacher', 'app-shell--parent': role === 'parent' }" :inert="selectedLesson ? '' : undefined" :aria-hidden="selectedLesson ? 'true' : undefined">
+  <main v-if="role" class="app-shell" :class="{ 'app-shell--teacher': role === 'teacher', 'app-shell--parent': role === 'parent' }" :inert="selectedLesson || workflow ? '' : undefined" :aria-hidden="selectedLesson || workflow ? 'true' : undefined">
     <TeacherShell
       v-if="role === 'teacher'"
       ref="workbenchDestination"
+      :account-id="accountId"
       :lessons="teacher.lessons"
       :students="teacher.students"
       :orders="teacher.orders"
@@ -123,6 +199,9 @@ onMounted(() => {
       @refresh="loadTeacher"
       @open-lesson="openLesson"
       @open-manual-schedule="openManualSchedule"
+      @open-student-manager="openStudentManager"
+      @open-teacher-order="openTeacherOrder"
+      @confirm-manual-order="confirmManualOrder"
       @open-ai="openAi"
       @switch-role="changeRole"
       @update:draft="teacher.draft = $event"
@@ -146,5 +225,29 @@ onMounted(() => {
       <p v-if="notice" class="parent-message parent-message--notice" role="status">{{ notice }}</p>
     </ParentShell>
   </main>
-  <LessonDrawer v-if="selectedLesson" :lesson="selectedLesson" :participants="participants" :format-date="formatDate" :loading="loading" @close="closeDrawer" @cancel="transition('cancel')" @complete="transition('complete')" />
+  <LessonDrawer v-if="selectedLesson" :lesson="selectedLesson" :participants="participants" :format-date="formatDate" :loading="loading" @close="closeDrawer" @edit="editSelectedLesson" @cancel="transition('cancel')" @complete="transition('complete')" />
+  <StudentManager
+    v-if="workflow === 'students'"
+    :students="teacher.students"
+    :loading="loading"
+    @create="createStudent"
+    @update="updateStudent"
+    @archive="archiveStudent"
+    @close="closeWorkflow"
+  />
+  <ManualScheduleSheet
+    v-if="workflow === 'schedule'"
+    :students="activeStudents"
+    :lesson="workflowLesson"
+    :loading="loading"
+    @save="saveManualLesson"
+    @close="closeWorkflow"
+  />
+  <TeacherOrderSheet
+    v-if="workflow === 'order'"
+    :students="activeStudents"
+    :loading="loading"
+    @save="createManualOrder"
+    @close="closeWorkflow"
+  />
 </template>

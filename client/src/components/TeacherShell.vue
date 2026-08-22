@@ -1,9 +1,10 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import AiSchedulePreview from './AiSchedulePreview.vue';
 import ScheduleBoard from './ScheduleBoard.vue';
 
 const props = defineProps({
+  accountId: { type: String, default: '' },
   lessons: { type: Array, default: () => [] },
   students: { type: Array, default: () => [] },
   orders: { type: Array, default: () => [] },
@@ -19,6 +20,9 @@ const emit = defineEmits([
   'refresh',
   'open-lesson',
   'open-manual-schedule',
+  'open-student-manager',
+  'open-teacher-order',
+  'confirm-manual-order',
   'open-ai',
   'switch-role',
   'update:draft',
@@ -31,10 +35,13 @@ const emit = defineEmits([
 const title = ref(null);
 const activeView = ref('today');
 const aiOpen = ref(false);
+const activeStudents = computed(() => props.students.filter(({ isActive }) => isActive !== false));
 const available = (student) => student.totalCredits - student.attendedCredits - student.reservedCredits;
 const money = (cents) => new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(cents / 100);
-const orderStatus = (status) => ({ pending: '待支付', paid: '已支付' }[status] ?? '状态待确认');
-const paymentMode = (mode) => ({ simulation: '模拟支付', simulated: '模拟支付' }[mode] ?? '模拟支付');
+const orderStatus = (status) => ({ pending: '待确认', paid: '已确认' }[status] ?? '状态待确认');
+const paymentMode = (mode) => ({ manual_qr: '扫码登记（模拟）', simulation: '模拟支付', simulated: '模拟支付' }[mode] ?? '模拟支付');
+const shortDate = (value) => value ? new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(value)) : '未确认';
+const canConfirm = (order) => order.paymentMode === 'manual_qr' && order.status === 'pending' && order.teacherId === props.accountId;
 
 function focus() {
   title.value?.focus();
@@ -114,22 +121,32 @@ defineExpose({ focus });
       </template>
 
       <section v-else-if="activeView === 'students'" class="teacher-list" aria-labelledby="student-list-title">
-        <div class="teacher-list__heading"><h2 id="student-list-title">学员课时</h2><span>{{ students.length }} 名学员</span></div>
+        <div class="teacher-list__heading">
+          <div><h2 id="student-list-title">学员课时</h2><p>停用会保留历史课程与订单。</p></div>
+          <div class="teacher-list__heading-actions"><span>{{ activeStudents.length }} 名在用</span><button data-testid="manage-students" type="button" @click="emit('open-student-manager', $event)">管理学员</button></div>
+        </div>
         <div class="teacher-list__labels" aria-hidden="true"><span>姓名</span><span>年级</span><span>可用</span><span>已预约</span><span>已上课</span></div>
-        <div v-for="student in students" :key="student.id" class="teacher-list__row">
+        <div v-for="student in activeStudents" :key="student.id" class="teacher-list__row">
           <strong>{{ student.name }}</strong><span>{{ student.grade }} 年级</span><span :class="{ danger: available(student) < 1 }">{{ available(student) }} 节</span><span>{{ student.reservedCredits }} 节</span><span>{{ student.attendedCredits }} 节</span>
         </div>
-        <p v-if="!students.length" class="teacher-list__empty">暂时没有学员记录。</p>
+        <p v-if="!activeStudents.length" class="teacher-list__empty">暂时没有使用中的学员记录。</p>
       </section>
 
       <section v-else class="teacher-list" aria-labelledby="order-list-title">
         <div class="teacher-list__heading">
-          <div><h2 id="order-list-title">模拟订单</h2><p>教师只能查看，不能确认付款或增加课时。</p></div>
-          <span>{{ orders.length }} 条记录</span>
+          <div><h2 id="order-list-title">本地订单</h2><p>模拟支付由家长确认；扫码登记（模拟）由登记教师确认一次。</p></div>
+          <div class="teacher-list__heading-actions"><span>{{ orders.length }} 条记录</span><button data-testid="open-teacher-order" type="button" @click="emit('open-teacher-order', $event)">登记订单</button></div>
         </div>
-        <div class="teacher-list__labels teacher-list__labels--orders" aria-hidden="true"><span>学生</span><span>套餐</span><span>金额</span><span>状态</span><span>付款时间</span></div>
+        <div class="teacher-list__labels teacher-list__labels--orders" aria-hidden="true"><span>学生</span><span>套餐 / 方式</span><span>金额</span><span>状态</span><span>登记 / 付款</span></div>
         <div v-for="order in orders" :key="order.id" class="teacher-list__row teacher-list__row--orders">
-          <strong>{{ order.student.name }}</strong><span>{{ order.packageName }} · {{ paymentMode(order.paymentMode) }}</span><span>{{ money(order.amountCents) }}</span><span>{{ orderStatus(order.status) }}</span><span>{{ order.paidAt ? new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(new Date(order.paidAt)) : '未付款' }}</span>
+          <strong>{{ order.student.name }}</strong>
+          <span>{{ order.packageName }} · {{ order.creditQuantity }} 节 · {{ paymentMode(order.paymentMode) }}</span>
+          <span>{{ money(order.amountCents) }}</span>
+          <span>{{ orderStatus(order.status) }}</span>
+          <span class="teacher-order-action">
+            <small>{{ shortDate(order.createdAt) }} / {{ shortDate(order.paidAt) }}</small>
+            <button v-if="canConfirm(order)" type="button" :data-testid="`confirm-${order.id}`" :disabled="loading" @click="emit('confirm-manual-order', order.id, $event)">确认到账（模拟）</button>
+          </span>
         </div>
         <p v-if="!orders.length" class="teacher-list__empty">尚未创建模拟订单。</p>
       </section>
@@ -138,10 +155,10 @@ defineExpose({ focus });
     <nav class="teacher-nav" aria-label="教师工作区">
       <button type="button" :class="{ 'is-active': activeView === 'today' }" @click="activeView = 'today'"><span>今日</span><small>当前</small></button>
       <button type="button" :class="{ 'is-active': activeView === 'schedule' }" @click="activeView = 'schedule'"><span>课表</span><small>逐日</small></button>
-      <button type="button" :class="{ 'is-active': activeView === 'students' }" @click="activeView = 'students'"><span>学员</span><small>{{ students.length }} 名</small></button>
+      <button type="button" :class="{ 'is-active': activeView === 'students' }" @click="activeView = 'students'"><span>学员</span><small>{{ activeStudents.length }} 名</small></button>
       <button type="button" :class="{ 'is-active': activeView === 'orders' }" @click="activeView = 'orders'"><span>订单</span><small>{{ orders.length }} 条</small></button>
     </nav>
 
-    <button class="teacher-manual-action" type="button" @click="emit('open-manual-schedule')">手动排课</button>
+    <button class="teacher-manual-action" data-testid="open-manual-schedule" type="button" @click="emit('open-manual-schedule', $event)">手动排课</button>
   </section>
 </template>

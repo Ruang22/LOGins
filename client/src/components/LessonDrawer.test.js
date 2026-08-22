@@ -13,4 +13,14 @@ describe('LessonDrawer', () => {
     expect(wrapper.emitted('close')).toHaveLength(1);
     wrapper.unmount();
   });
+
+  it('为尚未结束的课程发出编辑请求', async () => {
+    const wrapper = mount(LessonDrawer, {
+      props: { ...props, lesson: { ...props.lesson, status: 'scheduled' } },
+    });
+
+    await wrapper.get('[data-testid="edit-lesson"]').trigger('click');
+
+    expect(wrapper.emitted('edit')).toHaveLength(1);
+  });
 });
