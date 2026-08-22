@@ -78,6 +78,32 @@ describe('ParentShell', () => {
     expect(wrapper.emitted('simulate-payment')).toHaveLength(1);
   });
 
+  it('沿课程轨迹展示订单历史和不可交互的扫码登记模拟区', () => {
+    const wrapper = mount(ParentShell, {
+      props: {
+        dashboard: dashboard({
+          students: [firstChild],
+          orders: [{
+            id: 'order-1',
+            packageName: '进阶课程包',
+            creditQuantity: 8,
+            amountCents: 128000,
+            paymentMode: 'simulation',
+            status: 'paid',
+            createdAt: '2026-08-20T09:00:00.000Z',
+            paidAt: '2026-08-20T09:01:00.000Z',
+          }],
+        }),
+      },
+    });
+
+    expect(wrapper.text()).toContain('订单历史');
+    expect(wrapper.text()).toContain('进阶课程包');
+    expect(wrapper.get('[data-testid="simulated-qr-registration"]').text()).toContain('扫码登记（模拟）');
+    expect(wrapper.find('[data-testid="simulated-qr-registration"] button').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('确认收款');
+  });
+
   it('没有下节课时显示清楚的中文空状态', () => {
     const childWithoutNextLesson = {
       ...firstChild,

@@ -7,7 +7,7 @@ import { seedDatabase } from '../prisma/seed.js';
 import { createApp } from '../src/app.js';
 
 const prisma = new PrismaClient();
-const createdIds = { users: [], students: [], lessons: [] };
+const createdIds = { users: [], students: [], lessons: [], orders: [] };
 
 async function createOtherParentStudent() {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -23,13 +23,14 @@ async function createOtherParentStudent() {
 }
 
 after(async () => {
+  if (createdIds.orders.length) await prisma.order.deleteMany({ where: { id: { in: createdIds.orders } } });
   if (createdIds.lessons.length) await prisma.lesson.deleteMany({ where: { id: { in: createdIds.lessons } } });
   if (createdIds.students.length) await prisma.student.deleteMany({ where: { id: { in: createdIds.students } } });
   if (createdIds.users.length) await prisma.user.deleteMany({ where: { id: { in: createdIds.users } } });
   await prisma.$disconnect();
 });
 
-test('parent dashboard returns only the earliest-created active child and that child lessons', async () => {
+test('parent dashboard returns only the earliest-created active child plus that child lessons and orders', async () => {
   await seedDatabase(prisma);
   const otherStudent = await createOtherParentStudent();
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -66,6 +67,33 @@ test('parent dashboard returns only the earliest-created active child and that c
     },
   });
   createdIds.students.push(inactiveStudent.id, firstActiveStudent.id, laterActiveStudent.id);
+  const [firstChildOrder, laterChildOrder] = await Promise.all([
+    prisma.order.create({
+      data: {
+        parentId: parent.id,
+        studentId: firstActiveStudent.id,
+        packageId: 'starter',
+        packageName: '首位孩子课程包',
+        creditQuantity: 8,
+        amountCents: 128000,
+        paymentMode: 'simulation',
+        status: 'paid',
+        paidAt: new Date('2031-01-02T09:00:00.000Z'),
+      },
+    }),
+    prisma.order.create({
+      data: {
+        parentId: parent.id,
+        studentId: laterActiveStudent.id,
+        packageId: 'starter',
+        packageName: '另一位孩子课程包',
+        creditQuantity: 12,
+        amountCents: 188000,
+        paymentMode: 'manual_qr',
+      },
+    }),
+  ]);
+  createdIds.orders.push(firstChildOrder.id, laterChildOrder.id);
   const lesson = await prisma.lesson.create({
     data: {
       teacherId: teacher.id,
@@ -88,4 +116,16 @@ test('parent dashboard returns only the earliest-created active child and that c
   assert.ok(response.body.students.every((student) => student.id !== laterActiveStudent.id));
   assert.ok(response.body.students.every((student) => Array.isArray(student.lessons)));
   assert.ok(response.body.students.some((student) => student.lessons.some(({ id }) => id === lesson.id)));
+  assert.deepEqual(response.body.orders.map((order) => order.id), [firstChildOrder.id]);
+  assert.equal(response.body.orders.some((order) => order.id === laterChildOrder.id), false);
+  assert.deepEqual(Object.keys(response.body.orders[0]).sort(), [
+    'amountCents',
+    'createdAt',
+    'creditQuantity',
+    'id',
+    'packageName',
+    'paidAt',
+    'paymentMode',
+    'status',
+  ]);
 });

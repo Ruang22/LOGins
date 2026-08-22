@@ -11,6 +11,8 @@ const emit = defineEmits(['refresh', 'purchase', 'simulate-payment', 'switch-rol
 const title = ref(null);
 const child = computed(() => props.dashboard?.students?.[0] ?? null);
 const packages = computed(() => props.dashboard?.packages ?? []);
+const orders = computed(() => [...(props.dashboard?.orders ?? [])]
+  .sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt)));
 const lessons = computed(() => [...(child.value?.lessons ?? [])]
   .sort((left, right) => new Date(left.startsAt) - new Date(right.startsAt)));
 const nextLesson = computed(() => lessons.value.find((lesson) => (
@@ -52,6 +54,15 @@ const lessonStatus = (status) => ({
   completed: '已完成',
   cancelled: '已取消',
 }[status] ?? '状态待确认');
+const orderStatus = (status) => ({
+  pending: '待登记',
+  paid: '已到账',
+  cancelled: '已取消',
+}[status] ?? '状态待确认');
+const paymentMode = (mode) => ({
+  simulation: '模拟支付',
+  manual_qr: '扫码登记（模拟）',
+}[mode] ?? '模拟支付');
 
 function focus() {
   title.value?.focus();
@@ -123,6 +134,36 @@ defineExpose({ focus });
             </li>
           </ol>
           <p v-else class="parent-route__empty">还没有历史课程，完成第一节课后会从这里开始记录。</p>
+        </section>
+
+        <section class="parent-orders" aria-labelledby="parent-orders-title">
+          <div class="parent-route__label">
+            <span aria-hidden="true">续程</span>
+            <h2 id="parent-orders-title">订单历史</h2>
+          </div>
+          <div>
+            <ol v-if="orders.length" class="order-trail" data-testid="order-trail">
+              <li v-for="order in orders" :key="order.id">
+                <span class="order-trail__node" aria-hidden="true"></span>
+                <time :datetime="order.createdAt">{{ formatDateTime(order.createdAt) }}</time>
+                <div>
+                  <strong>{{ order.packageName }}</strong>
+                  <span>{{ order.creditQuantity }} 节 · {{ money(order.amountCents) }} · {{ paymentMode(order.paymentMode) }}</span>
+                </div>
+                <em :class="`is-${order.status}`">{{ orderStatus(order.status) }}</em>
+              </li>
+            </ol>
+            <p v-else class="parent-route__empty">还没有课程包订单，添加课时后会沿这条路线留下记录。</p>
+
+            <div class="parent-qr-simulation" data-testid="simulated-qr-registration" aria-label="扫码登记（模拟）">
+              <div class="parent-qr-simulation__placeholder" aria-hidden="true">收款码<br>占位</div>
+              <div>
+                <span>扫码登记（模拟）</span>
+                <strong>收款信息由教师线下登记</strong>
+                <p>这是演示占位区，不连接真实支付，也不会生成二维码请求。</p>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section class="parent-balance" aria-labelledby="parent-balance-title">
