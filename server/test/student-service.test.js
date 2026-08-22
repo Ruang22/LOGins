@@ -131,6 +131,21 @@ test('teacher updates a parent name when the student keeps the same parent email
   assert.equal(await prisma.user.findUnique({ where: { id: parent.id } }).then((user) => user.name), 'Renamed Parent');
 });
 
+test('teacher reassigns a student without renaming another existing parent', async () => {
+  const { student } = await createExistingStudent();
+  const { parent: targetParent, student: targetStudent } = await createExistingStudent();
+
+  const updated = await updateStudent({
+    studentId: student.id,
+    input: { parentName: 'Untrusted Replacement', parentEmail: targetParent.email },
+  }, teacher);
+
+  assert.equal(updated.parent.id, targetParent.id);
+  assert.equal(updated.parent.name, targetParent.name);
+  assert.equal(await prisma.user.findUnique({ where: { id: targetParent.id } }).then((user) => user.name), targetParent.name);
+  assert.equal(await prisma.student.findUnique({ where: { id: targetStudent.id } }).then((row) => row.parentId), targetParent.id);
+});
+
 test('archiving a student preserves lesson and order history', async () => {
   const { parent, student } = await createExistingStudent({ reservedCredits: 1 });
   const lesson = await prisma.lesson.create({
