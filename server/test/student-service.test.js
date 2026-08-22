@@ -118,6 +118,19 @@ test('teacher updates student details and returns the stable student shape', asy
   });
 });
 
+test('teacher updates a parent name when the student keeps the same parent email', async () => {
+  const { parent, student } = await createExistingStudent();
+
+  const updated = await updateStudent({
+    studentId: student.id,
+    input: { parentName: 'Renamed Parent', parentEmail: parent.email },
+  }, teacher);
+
+  assert.equal(updated.parent.id, parent.id);
+  assert.equal(updated.parent.name, 'Renamed Parent');
+  assert.equal(await prisma.user.findUnique({ where: { id: parent.id } }).then((user) => user.name), 'Renamed Parent');
+});
+
 test('archiving a student preserves lesson and order history', async () => {
   const { parent, student } = await createExistingStudent({ reservedCredits: 1 });
   const lesson = await prisma.lesson.create({

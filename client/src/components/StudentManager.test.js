@@ -61,4 +61,19 @@ describe('StudentManager', () => {
     expect(confirm).toHaveBeenCalledWith('确认停用林一？历史课程和订单仍会保留。');
     expect(wrapper.emitted('archive')).toEqual([['student-a']]);
   });
+
+  it('在弹层内报告错误并将键盘焦点环回', async () => {
+    const wrapper = mount(StudentManager, {
+      attachTo: document.body,
+      props: { students: [], error: '家长邮箱已被其他角色使用。' },
+    });
+
+    expect(wrapper.get('[role="alert"]').text()).toBe('家长邮箱已被其他角色使用。');
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="sheet-close"]').element);
+    await wrapper.get('[role="dialog"]').trigger('keydown', { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(wrapper.get('button[type="submit"]').element);
+    await wrapper.get('[role="dialog"]').trigger('keydown', { key: 'Escape' });
+    expect(wrapper.emitted('close')).toHaveLength(1);
+    wrapper.unmount();
+  });
 });

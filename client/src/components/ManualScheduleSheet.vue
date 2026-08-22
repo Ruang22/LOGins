@@ -5,16 +5,18 @@ const props = defineProps({
   students: { type: Array, default: () => [] },
   lesson: { type: Object, default: null },
   loading: Boolean,
+  error: { type: String, default: '' },
 });
 const emit = defineEmits(['save', 'close']);
 
+const BUSINESS_OFFSET_MINUTES = 8 * 60;
 const pad = (value) => String(value).padStart(2, '0');
 const localParts = (value) => {
   if (!value) return null;
-  const date = new Date(value);
+  const date = new Date(new Date(value).getTime() + BUSINESS_OFFSET_MINUTES * 60_000);
   return {
-    date: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
-    time: `${pad(date.getHours())}:${pad(date.getMinutes())}`,
+    date: `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`,
+    time: `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`,
   };
 };
 const existing = localParts(props.lesson?.startsAt);
@@ -33,12 +35,7 @@ function isDisabled(student) {
 }
 
 function startAtWithOffset() {
-  const local = new Date(`${startDate.value}T${startTime.value}:00`);
-  const offsetMinutes = -local.getTimezoneOffset();
-  if (offsetMinutes === 0) return `${startDate.value}T${startTime.value}:00Z`;
-  const sign = offsetMinutes >= 0 ? '+' : '-';
-  const absolute = Math.abs(offsetMinutes);
-  return `${startDate.value}T${startTime.value}:00${sign}${pad(Math.floor(absolute / 60))}:${pad(absolute % 60)}`;
+  return `${startDate.value}T${startTime.value}:00+08:00`;
 }
 
 function submit() {
@@ -78,6 +75,8 @@ onMounted(() => closeButton.value?.focus());
         </div>
         <button ref="closeButton" data-testid="sheet-close" type="button" aria-label="关闭手动排课" @click="emit('close')">×</button>
       </header>
+
+      <p v-if="error" class="workflow-form__error" role="alert">{{ error }}</p>
 
       <form class="workflow-form" @submit.prevent="submit">
         <fieldset class="workflow-form__students">

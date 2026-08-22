@@ -35,6 +35,7 @@ function closeDrawer() {
   nextTick(() => requestAnimationFrame(() => trigger?.focus()));
 }
 function openWorkflow(name, event, lesson = null) {
+  error.value = '';
   workflowTrigger.value = event?.currentTarget ?? event ?? document.activeElement;
   workflowLesson.value = lesson;
   workflow.value = name;
@@ -230,6 +231,7 @@ onMounted(() => {
     v-if="workflow === 'students'"
     :students="teacher.students"
     :loading="loading"
+    :error="error"
     @create="createStudent"
     @update="updateStudent"
     @archive="archiveStudent"
@@ -240,6 +242,7 @@ onMounted(() => {
     :students="activeStudents"
     :lesson="workflowLesson"
     :loading="loading"
+    :error="error"
     @save="saveManualLesson"
     @close="closeWorkflow"
   />
@@ -247,6 +250,7 @@ onMounted(() => {
     v-if="workflow === 'order'"
     :students="activeStudents"
     :loading="loading"
+    :error="error"
     @save="createManualOrder"
     @close="closeWorkflow"
   />

@@ -53,9 +53,33 @@ describe('ManualScheduleSheet', () => {
 
     expect(wrapper.get('[name="startTime"]').element.value).toBe('18:05');
     expect(document.activeElement).toBe(wrapper.get('[data-testid="sheet-close"]').element);
+    await wrapper.get('[role="dialog"]').trigger('keydown', { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(wrapper.get('button[type="submit"]').element);
+    await wrapper.get('[role="dialog"]').trigger('keydown', { key: 'Tab' });
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="sheet-close"]').element);
     await wrapper.get('[role="dialog"]').trigger('keydown', { key: 'Escape' });
 
     expect(wrapper.emitted('close')).toHaveLength(1);
     wrapper.unmount();
+  });
+
+  it('用固定 +08:00 业务时区编辑跨 offset 课程，并在弹层内报告错误', async () => {
+    const lesson = {
+      id: 'lesson-offset',
+      startsAt: '2032-03-01T04:05:00-06:00',
+      durationMinutes: 60,
+      note: '',
+      participants: [{ studentId: 'student-a', student: students[0] }],
+    };
+    const wrapper = mount(ManualScheduleSheet, {
+      props: { students, lesson, error: '时间冲突，请修改后重试。' },
+    });
+
+    expect(wrapper.get('[name="startDate"]').element.value).toBe('2032-03-01');
+    expect(wrapper.get('[name="startTime"]').element.value).toBe('18:05');
+    expect(wrapper.get('[role="alert"]').text()).toBe('时间冲突，请修改后重试。');
+    await wrapper.get('form').trigger('submit');
+
+    expect(wrapper.emitted('save')[0][0].startAt).toBe('2032-03-01T18:05:00+08:00');
   });
 });

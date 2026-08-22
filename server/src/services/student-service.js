@@ -29,10 +29,10 @@ async function lockStudent(tx, studentId) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`student:${studentId}`}))`;
 }
 
-async function findOrCreateParent(tx, { parentEmail, parentName }) {
+async function findOrCreateParent(tx, { parentEmail, parentName }, { updateName = false } = {}) {
   const parent = await tx.user.upsert({
     where: { email: parentEmail },
-    update: {},
+    update: updateName ? { name: parentName } : {},
     create: { name: parentName, email: parentEmail, role: 'parent' },
   });
   if (parent.role !== 'parent') throw new StudentError('PARENT_EMAIL_CONFLICT');
@@ -80,7 +80,7 @@ export async function updateStudent({ studentId, input }, teacher) {
       const parent = await findOrCreateParent(tx, {
         parentEmail: parsed.parentEmail,
         parentName: parsed.parentName ?? student.parent.name,
-      });
+      }, { updateName: parsed.parentName !== undefined });
       parentId = parent.id;
     } else if (parsed.parentName !== undefined) {
       await tx.user.update({ where: { id: student.parentId }, data: { name: parsed.parentName } });

@@ -185,7 +185,9 @@ describe('App', () => {
     vi.spyOn(api.teacher, 'schedule').mockResolvedValue([]);
     vi.spyOn(api.teacher, 'students').mockResolvedValue([managedStudent]);
     vi.spyOn(api.teacher, 'orders').mockResolvedValue([]);
-    const createLesson = vi.spyOn(api.teacher, 'createLesson').mockResolvedValue({ id: 'lesson-a' });
+    const createLesson = vi.spyOn(api.teacher, 'createLesson')
+      .mockRejectedValueOnce(new Error('TIME_CONFLICT'))
+      .mockResolvedValue({ id: 'lesson-a' });
     const wrapper = mount(App, { attachTo: document.body, global: { stubs: { RoleGate: false } } });
 
     await chooseRole(wrapper, 'teacher');
@@ -196,6 +198,11 @@ describe('App', () => {
     await wrapper.get('[data-testid="student-student-a"]').setValue(true);
     await wrapper.get('[role="dialog"] form').trigger('submit');
     await flushPromises();
+
+    expect(wrapper.get('[role="dialog"] [role="alert"]').text()).toContain('TIME_CONFLICT');
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(true);
+    await wrapper.get('[role="dialog"] form').trigger('submit');
+    await flushPromises();
     await nextFrame();
 
     expect(createLesson).toHaveBeenCalledWith(expect.objectContaining({
@@ -203,6 +210,7 @@ describe('App', () => {
       startAt: expect.stringMatching(/^2032-03-01T18:05:00/),
       durationMinutes: 60,
     }), 'teacher-local-id');
+    expect(createLesson).toHaveBeenCalledTimes(2);
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
     expect(document.activeElement).toBe(trigger.element);
     wrapper.unmount();
@@ -212,7 +220,9 @@ describe('App', () => {
     vi.spyOn(api.teacher, 'schedule').mockResolvedValue([]);
     vi.spyOn(api.teacher, 'students').mockResolvedValue([managedStudent]);
     vi.spyOn(api.teacher, 'orders').mockResolvedValue([]);
-    const createStudent = vi.spyOn(api.teacher, 'createStudent').mockResolvedValue(managedStudent);
+    const createStudent = vi.spyOn(api.teacher, 'createStudent')
+      .mockRejectedValueOnce(new Error('INVALID_STUDENT'))
+      .mockResolvedValue(managedStudent);
     const archiveStudent = vi.spyOn(api.teacher, 'archiveStudent').mockResolvedValue({ ...managedStudent, isActive: false });
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const wrapper = mount(App, { global: { stubs: { RoleGate: false } } });
@@ -228,7 +238,11 @@ describe('App', () => {
     await wrapper.get('[role="dialog"] form').trigger('submit');
     await flushPromises();
 
+    expect(wrapper.get('[role="dialog"] [role="alert"]').text()).toContain('INVALID_STUDENT');
+    await wrapper.get('[role="dialog"] form').trigger('submit');
+    await flushPromises();
     expect(createStudent).toHaveBeenCalledWith(expect.objectContaining({ name: '周然', totalCredits: 10 }), 'teacher-local-id');
+    expect(createStudent).toHaveBeenCalledTimes(2);
 
     await wrapper.get('[data-testid="manage-students"]').trigger('click');
     await wrapper.get('[data-testid="archive-student-a"]').trigger('click');
@@ -253,7 +267,9 @@ describe('App', () => {
     vi.spyOn(api.teacher, 'schedule').mockResolvedValue([]);
     vi.spyOn(api.teacher, 'students').mockResolvedValue([managedStudent]);
     vi.spyOn(api.teacher, 'orders').mockResolvedValue([pendingOrder]);
-    const createManualOrder = vi.spyOn(api.teacher, 'createManualOrder').mockResolvedValue(pendingOrder);
+    const createManualOrder = vi.spyOn(api.teacher, 'createManualOrder')
+      .mockRejectedValueOnce(new Error('INVALID_ORDER'))
+      .mockResolvedValue(pendingOrder);
     const confirmManualOrder = vi.spyOn(api.teacher, 'confirmManualOrder').mockResolvedValue({ ...pendingOrder, status: 'paid' });
     const wrapper = mount(App, { global: { stubs: { RoleGate: false } } });
 
@@ -268,7 +284,11 @@ describe('App', () => {
     await wrapper.get('[role="dialog"] form').trigger('submit');
     await flushPromises();
 
+    expect(wrapper.get('[role="dialog"] [role="alert"]').text()).toContain('INVALID_ORDER');
+    await wrapper.get('[role="dialog"] form').trigger('submit');
+    await flushPromises();
     expect(createManualOrder).toHaveBeenCalledWith(expect.objectContaining({ paymentMode: 'manual_qr', amountCents: 128050 }), 'teacher-local-id');
+    expect(createManualOrder).toHaveBeenCalledTimes(2);
     await wrapper.get('[data-testid="confirm-order-a"]').trigger('click');
     await flushPromises();
     expect(confirmManualOrder).toHaveBeenCalledWith('order-a', 'teacher-local-id');

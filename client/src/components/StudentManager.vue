@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue';
 
-const props = defineProps({ students: { type: Array, default: () => [] }, loading: Boolean });
+const props = defineProps({ students: { type: Array, default: () => [] }, loading: Boolean, error: { type: String, default: '' } });
 const emit = defineEmits(['create', 'update', 'archive', 'close']);
 const emptyForm = () => ({ name: '', grade: 7, parentName: '', parentEmail: '', totalCredits: 0 });
 const dialog = ref(null);
@@ -64,6 +64,8 @@ onMounted(() => closeButton.value?.focus());
         <div><p>教师学员名单</p><h2 id="student-manager-title">学员管理</h2></div>
         <button ref="closeButton" data-testid="sheet-close" type="button" aria-label="关闭学员管理" @click="emit('close')">×</button>
       </header>
+
+      <p v-if="error" class="workflow-form__error" role="alert">{{ error }}</p>
 
       <div class="workflow-manager">
         <section class="workflow-manager__list" aria-labelledby="managed-students-title">

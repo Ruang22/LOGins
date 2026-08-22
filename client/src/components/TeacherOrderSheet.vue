@@ -11,6 +11,7 @@ const props = defineProps({
     ],
   },
   loading: Boolean,
+  error: { type: String, default: '' },
 });
 const emit = defineEmits(['save', 'close']);
 const dialog = ref(null);
@@ -63,6 +64,8 @@ onMounted(() => closeButton.value?.focus());
         <div><p>本地记录，不发起真实收款</p><h2 id="teacher-order-title">登记订单</h2></div>
         <button ref="closeButton" data-testid="sheet-close" type="button" aria-label="关闭订单登记" @click="emit('close')">×</button>
       </header>
+
+      <p v-if="error" class="workflow-form__error" role="alert">{{ error }}</p>
 
       <form class="workflow-form" @submit.prevent="submit">
         <p class="workflow-form__notice">教师端登记统一标为“扫码登记（模拟）”；家长端套餐支付统一标为“模拟支付”。两者都不会发起真实收款。</p>

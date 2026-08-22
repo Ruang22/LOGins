@@ -29,9 +29,12 @@ describe('TeacherOrderSheet', () => {
   });
 
   it('关闭按钮获得初始焦点并可用 Escape 关闭', async () => {
-    const wrapper = mount(TeacherOrderSheet, { attachTo: document.body, props: { students } });
+    const wrapper = mount(TeacherOrderSheet, { attachTo: document.body, props: { students, error: '订单无法登记，请重试。' } });
 
+    expect(wrapper.get('[role="alert"]').text()).toBe('订单无法登记，请重试。');
     expect(document.activeElement).toBe(wrapper.get('[data-testid="sheet-close"]').element);
+    await wrapper.get('[role="dialog"]').trigger('keydown', { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(wrapper.get('.workflow-sheet__actions .secondary').element);
     await wrapper.get('[role="dialog"]').trigger('keydown', { key: 'Escape' });
 
     expect(wrapper.emitted('close')).toHaveLength(1);
