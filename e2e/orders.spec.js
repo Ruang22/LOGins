@@ -11,6 +11,9 @@ async function selectTeacherWorkbench(page) {
   await page.getByTestId('choose-teacher').click();
   const accounts = await (await accountsResponse).json();
   expect(accounts).toContainEqual(expect.objectContaining(teacherAccount));
+  const accountGate = page.getByTestId('account-gate');
+  await expect(accountGate).toBeVisible();
+  await accountGate.getByRole('button').filter({ hasText: teacherAccount.name }).click();
   await expect(page.getByTestId('teacher-shell')).toBeVisible();
   await expect(page.getByTestId('role-gate')).toHaveCount(0);
 }
@@ -153,19 +156,20 @@ test('parent cannot access a supplied foreign child id and the dashboard cannot 
 test('parent workbench captures desktop and mobile views without horizontal overflow', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
+  await selectTeacherWorkbench(page);
+  await page.getByRole('button', { name: '手动排课' }).click();
+  const scheduleDialog = page.getByRole('dialog', { name: '手动排课' });
+  await scheduleDialog.getByTestId('student-e2e-avery').check();
+  await scheduleDialog.getByLabel('日期', { exact: true }).fill('2032-01-05');
+  await scheduleDialog.getByLabel('开始时间', { exact: true }).fill('18:00');
+  await scheduleDialog.getByLabel('课程备注', { exact: true }).fill('家长端响应式验收');
+  const createLesson = page.waitForResponse((response) => (
+    response.url().endsWith('/api/teacher/lessons') && response.request().method() === 'POST'
+  ));
+  await scheduleDialog.getByRole('button', { name: '保存课程' }).click();
+  expect((await createLesson).status()).toBe(201);
+  await page.getByRole('button', { name: '切换身份' }).click();
   await selectParentWorkbench(page);
-
-  const createLesson = await page.request.post('/api/teacher/lessons', {
-    headers: { 'x-demo-user': teacherAccount.id },
-    data: {
-      studentIds: ['e2e-avery'],
-      startAt: '2032-01-05T10:00:00.000Z',
-      durationMinutes: 60,
-      note: '家长端响应式验收',
-    },
-  });
-  expect(createLesson.status()).toBe(201);
-  await page.getByRole('button', { name: '刷新轨迹' }).click();
 
   const nextLessonTime = page.getByTestId('next-lesson-time');
   await expect(nextLessonTime).toHaveText(/^\d{2}:\d{2}$/);

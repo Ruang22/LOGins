@@ -21,6 +21,11 @@ test('teacher workspace exposes labeled landmarks, a visible focus indicator, an
   await expect(page.getByRole('heading', { name: '请选择您的身份' })).toBeVisible();
   await page.getByTestId('choose-teacher').click();
 
+  const accountGate = page.getByTestId('account-gate');
+  await expect(accountGate).toBeVisible();
+  await expect(page.getByRole('heading', { name: '选择教师账户' })).toBeVisible();
+  await accountGate.getByRole('button').filter({ hasText: 'Maya Chen (Demo Teacher)' }).click();
+
   await expect(page.getByTestId('teacher-shell')).toBeVisible();
   await expect(page.getByTestId('role-gate')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '今天，按分钟上课' })).toBeVisible();

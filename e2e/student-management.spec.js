@@ -13,6 +13,9 @@ async function selectTeacherAccount(page) {
   await page.getByTestId('choose-teacher').click();
   const accounts = await (await accountsResponse).json();
   expect(accounts).toContainEqual(expect.objectContaining(teacherAccount));
+  const accountGate = page.getByTestId('account-gate');
+  await expect(accountGate).toBeVisible();
+  await accountGate.getByRole('button').filter({ hasText: teacherAccount.name }).click();
   await expect(page.getByTestId('teacher-shell')).toBeVisible();
   await expect(page.getByTestId('role-gate')).toHaveCount(0);
 }

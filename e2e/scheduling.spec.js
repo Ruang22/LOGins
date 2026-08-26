@@ -13,11 +13,41 @@ async function selectTeacherWorkbench(page) {
   await page.getByTestId('choose-teacher').click();
   const accounts = await (await accountsResponse).json();
   expect(accounts).toContainEqual(expect.objectContaining(teacherAccount));
+  const accountGate = page.getByTestId('account-gate');
+  await expect(accountGate).toBeVisible();
+  await expect(page.getByRole('heading', { name: '选择教师账户' })).toBeVisible();
+  await accountGate.getByRole('button').filter({ hasText: teacherAccount.name }).click();
   await expect(page.getByTestId('teacher-shell')).toBeVisible();
   await expect(page.getByTestId('role-gate')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '手动排课' })).toBeVisible();
   await expect(page.getByRole('button', { name: '刷新' })).toBeEnabled();
 }
+
+test('unconfigured AI provider rejects a draft without creating a lesson', async ({ page }) => {
+  await page.goto('/');
+  await selectTeacherWorkbench(page);
+
+  await page.getByRole('button', { name: 'AI 排课草稿' }).click();
+  const description = page.getByRole('textbox', { name: '课程描述' });
+  await description.fill('e2e individual lesson');
+  const responsePromise = page.waitForResponse((response) => (
+    response.url().endsWith('/api/ai/parse-schedule') && response.request().method() === 'POST'
+  ));
+  await page.getByRole('button', { name: '生成待确认草稿' }).click();
+
+  const response = await responsePromise;
+  expect(response.status()).toBe(503);
+  await expect(response.json()).resolves.toEqual({ code: 'AI_PROVIDER_UNAVAILABLE' });
+  await expect(page.getByRole('alert')).toContainText('AI 预览暂不可用（AI_PROVIDER_UNAVAILABLE）');
+  await expect(description).toHaveValue('e2e individual lesson');
+  await expect(page.getByRole('button', { name: '确认预约' })).toHaveCount(0);
+
+  const schedule = await page.request.get('/api/teacher/schedule', {
+    headers: { 'x-demo-user': teacherAccount.id },
+  });
+  expect(schedule.ok()).toBeTruthy();
+  expect(await schedule.json()).toHaveLength(0);
+});
 
 async function openManualSchedule(page) {
   await page.getByRole('button', { name: '手动排课' }).click();
