@@ -78,27 +78,66 @@ describe('ParentShell', () => {
     expect(wrapper.emitted('simulate-payment')).toHaveLength(1);
   });
 
-  it('沿课程轨迹展示订单历史和不可交互的扫码登记模拟区', () => {
+  it('按创建时间从新到旧在线性订单轨迹中展示套餐、课时、金额、状态和创建时间', () => {
     const wrapper = mount(ParentShell, {
       props: {
         dashboard: dashboard({
           students: [firstChild],
-          orders: [{
-            id: 'order-1',
-            packageName: '进阶课程包',
-            creditQuantity: 8,
-            amountCents: 128000,
-            paymentMode: 'simulation',
-            status: 'paid',
-            createdAt: '2026-08-20T09:00:00.000Z',
-            paidAt: '2026-08-20T09:01:00.000Z',
-          }],
+          orders: [
+            {
+              id: 'order-earlier',
+              packageName: '基础课程包',
+              creditQuantity: 8,
+              amountCents: 128000,
+              paymentMode: 'simulation',
+              status: 'paid',
+              createdAt: '2026-08-20T09:00:00.000Z',
+              paidAt: '2026-08-20T09:01:00.000Z',
+            },
+            {
+              id: 'order-later',
+              packageName: '进阶课程包',
+              creditQuantity: 12,
+              amountCents: 188000,
+              paymentMode: 'manual_qr',
+              status: 'pending',
+              createdAt: '2026-08-22T09:30:00.000Z',
+              paidAt: null,
+            },
+          ],
         }),
       },
     });
 
-    expect(wrapper.text()).toContain('订单历史');
-    expect(wrapper.text()).toContain('进阶课程包');
+    const orderItems = wrapper.get('[data-testid="order-trail"]').findAll('li');
+
+    expect(orderItems).toHaveLength(2);
+    expect(orderItems[0].text()).toContain('进阶课程包');
+    expect(orderItems[0].text()).toContain('12 节');
+    expect(orderItems[0].text()).toContain('¥1,880');
+    expect(orderItems[0].text()).toContain('扫码登记（模拟）');
+    expect(orderItems[0].text()).toContain('待登记');
+    expect(orderItems[0].find('time').attributes('datetime')).toBe('2026-08-22T09:30:00.000Z');
+    expect(orderItems[1].text()).toContain('基础课程包');
+    expect(orderItems[1].text()).toContain('8 节');
+    expect(orderItems[1].text()).toContain('¥1,280');
+    expect(orderItems[1].text()).toContain('模拟支付');
+    expect(orderItems[1].text()).toContain('已到账');
+    expect(orderItems[1].find('time').attributes('datetime')).toBe('2026-08-20T09:00:00.000Z');
+  });
+
+  it('没有订单时显示清楚的中文空状态', () => {
+    const wrapper = mount(ParentShell, {
+      props: { dashboard: dashboard({ students: [firstChild], orders: [] }) },
+    });
+
+    expect(wrapper.find('[data-testid="order-trail"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('还没有课程包订单');
+  });
+
+  it('展示不可交互的扫码登记模拟区，不给家长确认收款动作', () => {
+    const wrapper = mount(ParentShell, { props: { dashboard: dashboard({ students: [firstChild] }) } });
+
     expect(wrapper.get('[data-testid="simulated-qr-registration"]').text()).toContain('扫码登记（模拟）');
     expect(wrapper.find('[data-testid="simulated-qr-registration"] button').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('确认收款');
