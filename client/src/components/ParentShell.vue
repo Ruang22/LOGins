@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, toRaw } from 'vue';
+import { formatBusinessDate } from '../business-time.js';
 
 const props = defineProps({
   dashboard: { type: Object, default: null },
@@ -26,24 +27,24 @@ const availableCredits = computed(() => {
   return Math.max(0, child.value.totalCredits - child.value.attendedCredits - child.value.reservedCredits);
 });
 
-const formatDay = (value) => new Intl.DateTimeFormat('zh-CN', {
+const formatDay = (value) => formatBusinessDate(value, {
   month: 'numeric',
   day: 'numeric',
   weekday: 'short',
-}).format(new Date(value));
-const formatTime = (value) => new Intl.DateTimeFormat('zh-CN', {
+});
+const formatTime = (value) => formatBusinessDate(value, {
   hour: '2-digit',
   minute: '2-digit',
   hourCycle: 'h23',
-}).format(new Date(value));
-const formatDateTime = (value) => new Intl.DateTimeFormat('zh-CN', {
+});
+const formatDateTime = (value) => formatBusinessDate(value, {
   year: 'numeric',
   month: 'numeric',
   day: 'numeric',
   hour: '2-digit',
   minute: '2-digit',
   hourCycle: 'h23',
-}).format(new Date(value));
+});
 const money = (cents) => new Intl.NumberFormat('zh-CN', {
   style: 'currency',
   currency: 'CNY',

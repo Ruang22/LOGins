@@ -11,4 +11,16 @@ describe('AiSchedulePreview', () => {
     await wrapper.get('button.confirm').trigger('click');
     expect(wrapper.emitted('confirm')).toEqual([[suggestion]]);
   });
+
+  it('在非 +08 设备时区仍把 AI 草稿时间显示为北京时间 18:05', () => {
+    const suggestion = { courseName: 'English', startAt: '2032-03-01T10:05:00.000Z', studentNames: ['Avery'] };
+    const wrapper = mount(AiSchedulePreview, {
+      props: {
+        suggestion,
+        students: [{ id: 'student-1', name: 'Avery', grade: 8, totalCredits: 3, attendedCredits: 0, reservedCredits: 0 }],
+      },
+    });
+
+    expect(wrapper.get('.preview-time').text()).toContain('18:05');
+  });
 });

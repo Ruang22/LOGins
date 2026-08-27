@@ -5,14 +5,14 @@ import TeacherShell from './TeacherShell.vue';
 
 const earlyLesson = {
   id: 'lesson-early',
-  startsAt: '2031-01-02T09:30:00',
+  startsAt: '2031-01-02T09:30:00+08:00',
   status: 'scheduled',
   participants: [{ student: { name: '林一', grade: 7 } }],
 };
 
 const lateLesson = {
   id: 'lesson-late',
-  startsAt: '2031-01-02T18:05:00',
+  startsAt: '2031-01-02T18:05:00+08:00',
   status: 'completed',
   participants: [{ student: { name: '周然', grade: 8 } }],
 };
@@ -27,6 +27,37 @@ describe('ScheduleBoard', () => {
       '09:30',
       '18:05',
     ]);
+  });
+
+  it('在 UTC 设备时区仍按北京时间显示 18:05 的教师课表与订单时间', async () => {
+    const lesson = {
+      ...earlyLesson,
+      id: 'lesson-business-time',
+      startsAt: '2032-03-01T10:05:00.000Z',
+    };
+    const wrapper = mount(TeacherShell, {
+      props: {
+        accountId: 'teacher-local-id',
+        lessons: [lesson],
+        scheduleDate: lesson.startsAt,
+        orders: [{
+          id: 'order-business-time',
+          teacherId: 'teacher-local-id',
+          student: { name: '林一' },
+          packageName: '时区课程包',
+          creditQuantity: 6,
+          amountCents: 128000,
+          status: 'pending',
+          paymentMode: 'manual_qr',
+          createdAt: lesson.startsAt,
+          paidAt: null,
+        }],
+      },
+    });
+
+    expect(wrapper.get('[data-testid="schedule-time"]').text()).toBe('18:05');
+    await wrapper.findAll('.teacher-nav button').find((button) => button.text().includes('订单')).trigger('click');
+    expect(wrapper.get('.teacher-order-action small').text()).toContain('18:05');
   });
 
   it('异步历史课程首次到达时仍停留在本地日历今天', async () => {

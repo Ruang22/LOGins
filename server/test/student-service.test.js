@@ -185,3 +185,66 @@ test('student lifecycle writes require a teacher and reject unknown students', a
   await assert.rejects(updateStudent({ studentId: 'missing', input: { grade: 8 } }, teacher), { code: 'STUDENT_NOT_FOUND' });
   await assert.rejects(archiveStudent({ studentId: 'missing' }, teacher), { code: 'STUDENT_NOT_FOUND' });
 });
+
+test('grade changes cannot split an active group lesson and roll back every accompanying edit', async () => {
+  const { parent, student } = await createExistingStudent();
+  const suffix = uniqueSuffix();
+  const peer = await prisma.student.create({
+    data: {
+      parentId: parent.id,
+      name: `Group Peer ${suffix}`,
+      grade: student.grade,
+      totalCredits: 4,
+      reservedCredits: 1,
+    },
+  });
+  createdIds.students.push(peer.id);
+  const lesson = await prisma.lesson.create({
+    data: {
+      teacherId: teacher.id,
+      startsAt: new Date('2032-04-02T10:05:00.000Z'),
+      participants: { create: [{ studentId: student.id }, { studentId: peer.id }] },
+    },
+  });
+  createdIds.lessons.push(lesson.id);
+  const before = await prisma.student.findUniqueOrThrow({
+    where: { id: student.id },
+    include: { parent: true },
+  });
+
+  await assert.rejects(
+    updateStudent({
+      studentId: student.id,
+      input: {
+        name: '不得部分写入的名字',
+        grade: student.grade + 1,
+        parentName: '不得部分写入的家长名',
+        totalCredits: 9,
+      },
+    }, teacher),
+    (error) => error.code === 'GRADE_CHANGE_CONFLICT',
+  );
+
+  const unchanged = await prisma.student.findUniqueOrThrow({
+    where: { id: student.id },
+    include: { parent: true },
+  });
+  assert.deepEqual(
+    {
+      name: unchanged.name,
+      grade: unchanged.grade,
+      totalCredits: unchanged.totalCredits,
+      parentName: unchanged.parent.name,
+    },
+    {
+      name: before.name,
+      grade: before.grade,
+      totalCredits: before.totalCredits,
+      parentName: before.parent.name,
+    },
+  );
+
+  await prisma.lesson.update({ where: { id: lesson.id }, data: { status: 'completed' } });
+  const updated = await updateStudent({ studentId: student.id, input: { grade: student.grade + 1 } }, teacher);
+  assert.equal(updated.grade, student.grade + 1);
+});

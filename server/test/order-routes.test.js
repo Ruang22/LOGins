@@ -125,3 +125,54 @@ test('teacher manual order route uses catalog facts and rejects parent access', 
     .send({ studentId: student.id, packageName: '无权登记', creditQuantity: 1, amountCents: 0, paymentMode: 'manual_qr' })
     .expect(403, { code: 'FORBIDDEN' });
 });
+
+test('order routes enforce the first-active-child and inactive-student boundaries', async (t) => {
+  await seedDatabase(prisma);
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const parent = await prisma.user.create({
+    data: { name: `Boundary Parent ${suffix}`, email: `boundary-parent-${suffix}@example.test`, role: 'parent' },
+  });
+  const firstChild = await prisma.student.create({
+    data: { parentId: parent.id, name: `First Boundary Child ${suffix}`, grade: 8, totalCredits: 2 },
+  });
+  const secondChild = await prisma.student.create({
+    data: { parentId: parent.id, name: `Second Boundary Child ${suffix}`, grade: 8, totalCredits: 2 },
+  });
+  t.after(async () => {
+    await prisma.order.deleteMany({ where: { parentId: parent.id } });
+    await prisma.student.deleteMany({ where: { id: { in: [firstChild.id, secondChild.id] } } });
+    await prisma.user.delete({ where: { id: parent.id } });
+  });
+  const app = createApp();
+
+  await request(app)
+    .post('/api/parent/orders')
+    .set('x-demo-user', parent.id)
+    .send({ studentId: secondChild.id, packageId: 'demo-10' })
+    .expect(403, { code: 'FORBIDDEN' });
+
+  const created = await request(app)
+    .post('/api/parent/orders')
+    .set('x-demo-user', parent.id)
+    .send({ studentId: firstChild.id, packageId: 'demo-10' })
+    .expect(201);
+  createdOrderIds.push(created.body.id);
+
+  await prisma.student.update({ where: { id: firstChild.id }, data: { isActive: false } });
+  await request(app)
+    .post('/api/parent/orders')
+    .set('x-demo-user', parent.id)
+    .send({ studentId: firstChild.id, packageId: 'demo-10' })
+    .expect(400, { code: 'STUDENT_INACTIVE' });
+  await request(app)
+    .post('/api/teacher/orders/manual')
+    .set('x-demo-user', 'teacher-demo')
+    .send({
+      studentId: firstChild.id,
+      packageName: '停用边界课程包',
+      creditQuantity: 1,
+      amountCents: 100,
+      paymentMode: 'manual_qr',
+    })
+    .expect(400, { code: 'STUDENT_INACTIVE' });
+});

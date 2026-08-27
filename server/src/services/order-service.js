@@ -52,17 +52,37 @@ async function lock(tx, value) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${value}))`;
 }
 
+async function lockStudent(tx, studentId) {
+  await lock(tx, `student:${studentId}`);
+}
+
+async function requireVisibleActiveStudent(tx, { studentId, parentId }) {
+  const student = await tx.student.findUnique({
+    where: { id: studentId },
+    select: { id: true, parentId: true, isActive: true },
+  });
+  if (!student) throw new OrderError('STUDENT_NOT_FOUND');
+  if (!student.isActive) throw new OrderError('STUDENT_INACTIVE');
+  if (student.parentId !== parentId) throw new OrderError('FORBIDDEN');
+  const visibleStudent = await tx.student.findFirst({
+    where: { parentId, isActive: true },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    select: { id: true },
+  });
+  if (visibleStudent?.id !== student.id) throw new OrderError('FORBIDDEN');
+  return student;
+}
+
 export async function createOrder(input, parent) {
   const actor = requireActor(parent);
   if (actor.role !== 'parent') throw new OrderError('FORBIDDEN');
   const orderInput = validateOrderInput(input);
 
   return prisma.$transaction(async (tx) => {
-    const student = await tx.student.findUnique({ where: { id: orderInput.studentId }, select: { parentId: true } });
-    if (!student) throw new OrderError('STUDENT_NOT_FOUND');
-    if (student.parentId !== actor.id) throw new OrderError('FORBIDDEN');
+    await lockStudent(tx, orderInput.studentId);
+    await requireVisibleActiveStudent(tx, { studentId: orderInput.studentId, parentId: actor.id });
     return tx.order.create({ data: { ...orderInput, parentId: actor.id, paymentMode: 'simulation' } });
-  });
+  }, { isolationLevel: 'Serializable' });
 }
 
 export async function confirmSimulationOrder(orderId, actorInput) {
@@ -75,6 +95,8 @@ export async function confirmSimulationOrder(orderId, actorInput) {
     const order = await tx.order.findUnique({ where: { id: orderId } });
     if (!order) throw new OrderError('ORDER_NOT_FOUND');
     if (order.parentId !== actor.id) throw new OrderError('FORBIDDEN');
+    await lockStudent(tx, order.studentId);
+    await requireVisibleActiveStudent(tx, { studentId: order.studentId, parentId: actor.id });
     if (order.status !== 'pending') throw new OrderError('ORDER_NOT_PENDING');
 
     if (order.paymentMode !== 'simulation') throw new OrderError('INVALID_PAYMENT_MODE');
@@ -98,6 +120,7 @@ export async function createTeacherManualOrder(input, teacherInput) {
   const orderInput = validateTeacherManualOrderInput(input);
 
   return prisma.$transaction(async (tx) => {
+    await lockStudent(tx, input.studentId);
     const student = await tx.student.findUnique({
       where: { id: input.studentId },
       select: { parentId: true, isActive: true },
@@ -131,6 +154,14 @@ export async function confirmTeacherManualOrder({ orderId } = {}, teacherInput) 
       SELECT "teacherId" FROM "Order" WHERE "id" = ${order.id}
     `;
     if (ownership?.teacherId !== teacher.id) throw new OrderError('FORBIDDEN');
+    await lockStudent(tx, order.studentId);
+    const student = await tx.student.findUnique({
+      where: { id: order.studentId },
+      select: { parentId: true, isActive: true },
+    });
+    if (!student) throw new OrderError('STUDENT_NOT_FOUND');
+    if (!student.isActive) throw new OrderError('STUDENT_INACTIVE');
+    if (student.parentId !== order.parentId) throw new OrderError('FORBIDDEN');
     if (order.status === 'paid') throw new OrderError('ORDER_ALREADY_PAID');
     if (order.status !== 'pending') throw new OrderError('ORDER_NOT_PENDING');
 

@@ -35,7 +35,16 @@ async function createFixture() {
 }
 
 after(async () => {
-  if (createdIds.orders.length) await prisma.order.deleteMany({ where: { id: { in: createdIds.orders } } });
+  if (createdIds.orders.length || createdIds.students.length) {
+    await prisma.order.deleteMany({
+      where: {
+        OR: [
+          ...(createdIds.orders.length ? [{ id: { in: createdIds.orders } }] : []),
+          ...(createdIds.students.length ? [{ studentId: { in: createdIds.students } }] : []),
+        ],
+      },
+    });
+  }
   if (createdIds.students.length) await prisma.student.deleteMany({ where: { id: { in: createdIds.students } } });
   if (createdIds.users.length) await prisma.user.deleteMany({ where: { id: { in: createdIds.users } } });
   await prisma.$disconnect();
@@ -204,4 +213,88 @@ test('a non-owner cannot learn that another teacher manual order is already paid
     confirmTeacherManualOrder({ orderId: order.id }, otherTeacher),
     (error) => error.code === 'FORBIDDEN' && error.code !== 'ORDER_ALREADY_PAID',
   );
+});
+
+test('a parent can create simulation orders only for the first active child exposed by the dashboard', async () => {
+  const { parent, student } = await createFixture();
+  const laterChild = await prisma.student.create({
+    data: {
+      parentId: parent.id,
+      name: `Later Order Student ${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      grade: student.grade,
+      totalCredits: 2,
+    },
+  });
+  createdIds.students.push(laterChild.id);
+
+  await assert.rejects(
+    createOrder({ studentId: laterChild.id, packageId: 'demo-10' }, parent),
+    (error) => error.code === 'FORBIDDEN',
+  );
+
+  const firstOrder = await createOrder({ studentId: student.id, packageId: 'demo-10' }, parent);
+  createdIds.orders.push(firstOrder.id);
+  assert.equal(firstOrder.studentId, student.id);
+});
+
+test('inactive students cannot receive new simulation or manual-qr orders', async () => {
+  const { teacher, parent, student } = await createFixture();
+  await prisma.student.update({ where: { id: student.id }, data: { isActive: false } });
+
+  await assert.rejects(
+    createOrder({ studentId: student.id, packageId: 'demo-10' }, parent),
+    (error) => error.code === 'STUDENT_INACTIVE',
+  );
+  await assert.rejects(
+    createTeacherManualOrder({
+      studentId: student.id,
+      packageName: '停用学员课程包',
+      creditQuantity: 4,
+      amountCents: 120000,
+      paymentMode: 'manual_qr',
+    }, teacher),
+    (error) => error.code === 'STUDENT_INACTIVE',
+  );
+});
+
+test('simulation confirmation rechecks the locked student is still active, owned, and first-visible', async () => {
+  const { parent, otherParent, student } = await createFixture();
+  const order = await createOrder({ studentId: student.id, packageId: 'demo-10' }, parent);
+  createdIds.orders.push(order.id);
+  await prisma.student.update({ where: { id: student.id }, data: { parentId: otherParent.id } });
+
+  await assert.rejects(
+    confirmSimulationOrder(order.id, parent),
+    (error) => error.code === 'FORBIDDEN',
+  );
+  assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status, 'pending');
+  assert.equal((await prisma.student.findUniqueOrThrow({ where: { id: student.id } })).totalCredits, 2);
+});
+
+test('manual-qr confirmation rechecks the locked student remains active and bound to the recorded parent', async () => {
+  const { teacher, otherParent, student } = await createFixture();
+  const inactiveOrder = await createTeacherManualOrder({
+    studentId: student.id,
+    packageName: '待停用课程包',
+    creditQuantity: 4,
+    amountCents: 120000,
+    paymentMode: 'manual_qr',
+  }, teacher);
+  createdIds.orders.push(inactiveOrder.id);
+  await prisma.student.update({ where: { id: student.id }, data: { isActive: false } });
+
+  await assert.rejects(
+    confirmTeacherManualOrder({ orderId: inactiveOrder.id }, teacher),
+    (error) => error.code === 'STUDENT_INACTIVE',
+  );
+  await prisma.student.update({
+    where: { id: student.id },
+    data: { isActive: true, parentId: otherParent.id },
+  });
+  await assert.rejects(
+    confirmTeacherManualOrder({ orderId: inactiveOrder.id }, teacher),
+    (error) => error.code === 'FORBIDDEN',
+  );
+  assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: inactiveOrder.id } })).status, 'pending');
+  assert.equal((await prisma.student.findUniqueOrThrow({ where: { id: student.id } })).totalCredits, 2);
 });

@@ -110,3 +110,53 @@ test('teacher creates, edits, archives a student and cannot schedule the archive
   await page.screenshot({ path: testInfo.outputPath('student-management-mobile.png'), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
+
+test('390px teacher student and order management use readable cards without internal horizontal scrolling', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const orderResponse = await page.request.post('/api/teacher/orders/manual', {
+    headers: { 'x-demo-user': teacherAccount.id },
+    data: {
+      studentId: 'e2e-avery',
+      packageName: '390px 可见课程包',
+      creditQuantity: 4,
+      amountCents: 19950,
+      paymentMode: 'manual_qr',
+    },
+  });
+  expect(orderResponse.status()).toBe(201);
+  await page.goto('/');
+  await selectTeacherAccount(page);
+
+  const teacherNav = page.getByRole('navigation', { name: '教师工作区' });
+  await teacherNav.getByRole('button', { name: /^学员/ }).click();
+  let list = page.locator('.teacher-list');
+  expect(await list.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(
+    await list.evaluate((element) => element.clientWidth),
+  );
+  const studentRow = list.locator('.teacher-list__row').filter({ hasText: 'Avery Rivera (Demo Student)' });
+  await expect(studentRow).toContainText('使用中');
+  await expect(studentRow).toContainText('9 节');
+  await expect(studentRow).toContainText('3 节');
+  const manage = page.getByTestId('manage-students');
+  await expect(manage).toBeInViewport();
+  await manage.click();
+  const studentDialog = page.getByRole('dialog', { name: '学员管理' });
+  const managedRow = studentDialog.locator('.workflow-manager__row').filter({ hasText: 'Avery Rivera (Demo Student)' });
+  await expect(managedRow.getByRole('button', { name: '编辑' })).toBeInViewport();
+  await expect(managedRow.getByRole('button', { name: '停用' })).toBeInViewport();
+  await studentDialog.getByRole('button', { name: '关闭学员管理' }).click();
+
+  await teacherNav.getByRole('button', { name: /^订单/ }).click();
+  list = page.locator('.teacher-list');
+  expect(await list.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(
+    await list.evaluate((element) => element.clientWidth),
+  );
+  const orderRow = list.locator('.teacher-list__row--orders').filter({ hasText: '390px 可见课程包' });
+  await expect(orderRow).toContainText('Avery Rivera (Demo Student)');
+  await expect(orderRow).toContainText('4 节');
+  await expect(orderRow).toContainText('¥199.50');
+  await expect(orderRow).toContainText('待确认');
+  await expect(orderRow.getByRole('button', { name: '确认到账（模拟）' })).toBeInViewport();
+  await expect(page.getByTestId('open-teacher-order')).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});

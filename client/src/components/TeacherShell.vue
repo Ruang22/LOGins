@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue';
+import { formatBusinessDate } from '../business-time.js';
 import AiSchedulePreview from './AiSchedulePreview.vue';
 import ScheduleBoard from './ScheduleBoard.vue';
 
@@ -40,7 +41,7 @@ const available = (student) => student.totalCredits - student.attendedCredits - 
 const money = (cents) => new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(cents / 100);
 const orderStatus = (status) => ({ pending: '待确认', paid: '已确认' }[status] ?? '状态待确认');
 const paymentMode = (mode) => ({ manual_qr: '扫码登记（模拟）', simulation: '模拟支付', simulated: '模拟支付' }[mode] ?? '模拟支付');
-const shortDate = (value) => value ? new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(value)) : '未确认';
+const shortDate = (value) => value ? formatBusinessDate(value, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) : '未确认';
 const canConfirm = (order) => order.paymentMode === 'manual_qr' && order.status === 'pending' && order.teacherId === props.accountId;
 
 function focus() {
@@ -127,7 +128,11 @@ defineExpose({ focus });
         </div>
         <div class="teacher-list__labels" aria-hidden="true"><span>姓名</span><span>年级</span><span>可用</span><span>已预约</span><span>已上课</span></div>
         <div v-for="student in activeStudents" :key="student.id" class="teacher-list__row">
-          <strong>{{ student.name }}</strong><span>{{ student.grade }} 年级</span><span :class="{ danger: available(student) < 1 }">{{ available(student) }} 节</span><span>{{ student.reservedCredits }} 节</span><span>{{ student.attendedCredits }} 节</span>
+          <strong><span>{{ student.name }}</span><small>{{ student.isActive === false ? '已停用' : '使用中' }}</small></strong>
+          <span data-label="年级">{{ student.grade }} 年级</span>
+          <span data-label="可用" :class="{ danger: available(student) < 1 }">{{ available(student) }} 节</span>
+          <span data-label="已预约">{{ student.reservedCredits }} 节</span>
+          <span data-label="已上课">{{ student.attendedCredits }} 节</span>
         </div>
         <p v-if="!activeStudents.length" class="teacher-list__empty">暂时没有使用中的学员记录。</p>
       </section>
@@ -140,10 +145,10 @@ defineExpose({ focus });
         <div class="teacher-list__labels teacher-list__labels--orders" aria-hidden="true"><span>学生</span><span>套餐 / 方式</span><span>金额</span><span>状态</span><span>登记 / 付款</span></div>
         <div v-for="order in orders" :key="order.id" class="teacher-list__row teacher-list__row--orders">
           <strong>{{ order.student.name }}</strong>
-          <span>{{ order.packageName }} · {{ order.creditQuantity }} 节 · {{ paymentMode(order.paymentMode) }}</span>
-          <span>{{ money(order.amountCents) }}</span>
-          <span>{{ orderStatus(order.status) }}</span>
-          <span class="teacher-order-action">
+          <span class="teacher-order-package" data-label="套餐 / 方式">{{ order.packageName }} · {{ order.creditQuantity }} 节 · {{ paymentMode(order.paymentMode) }}</span>
+          <span data-label="金额">{{ money(order.amountCents) }}</span>
+          <span data-label="状态">{{ orderStatus(order.status) }}</span>
+          <span class="teacher-order-action" data-label="登记 / 付款">
             <small>{{ shortDate(order.createdAt) }} / {{ shortDate(order.paidAt) }}</small>
             <button v-if="canConfirm(order)" type="button" :data-testid="`confirm-${order.id}`" :disabled="loading" @click="emit('confirm-manual-order', order.id, $event)">确认到账（模拟）</button>
           </span>

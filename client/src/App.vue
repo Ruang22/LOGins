@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, onMounted, ref } from 'vue';
 import { api } from './api.js';
+import { formatBusinessDate } from './business-time.js';
 import LessonDrawer from './components/LessonDrawer.vue';
 import ManualScheduleSheet from './components/ManualScheduleSheet.vue';
 import ParentShell from './components/ParentShell.vue';
@@ -13,25 +14,110 @@ import { createRoleSession } from './state/role-session.js';
 const { role, accountId, select: selectRole, reset: resetRole } = createRoleSession();
 const loading = ref(false); const error = ref(''); const notice = ref('');
 const pendingRole = ref(null); const accountChoices = ref([]); const accountLoading = ref(false); const accountError = ref('');
-const teacher = ref({ lessons: [], students: [], orders: [], suggestion: null, draft: '' });
-const parent = ref({ data: null, order: null }); const selectedLesson = ref(null); const lessonTrigger = ref(null);
+const emptyTeacher = () => ({ lessons: [], students: [], orders: [], suggestion: null, draft: '' });
+const emptyParent = () => ({ data: null, order: null });
+const teacher = ref(emptyTeacher());
+const parent = ref(emptyParent()); const selectedLesson = ref(null); const lessonTrigger = ref(null);
+const drawerError = ref('');
 const workflow = ref(null); const workflowLesson = ref(null); const workflowTrigger = ref(null);
 const workbenchDestination = ref(null);
 const roleGateDestination = ref(null);
 const teacherScheduleDate = ref(null);
-const formatDate = (v) => new Intl.DateTimeFormat('zh-CN', { weekday: 'short', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(v));
+const formatDate = (v) => formatBusinessDate(v, { weekday: 'short', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const participants = (lesson) => lesson.participants?.map(({ student }) => student.name).join('、') ?? '学生课程';
 const child = computed(() => parent.value.data?.students?.[0]);
 const activeStudents = computed(() => teacher.value.students.filter(({ isActive }) => isActive !== false));
-async function loadTeacher() { const [lessons, students, orders] = await Promise.all([api.teacher.schedule(accountId.value), api.teacher.students(accountId.value), api.teacher.orders(accountId.value)]); teacher.value = { ...teacher.value, lessons, students, orders }; }
-async function loadParent() { parent.value = { ...parent.value, data: await api.parent.dashboard(accountId.value) }; }
-async function load() { loading.value = true; error.value = ''; try { role.value === 'teacher' ? await loadTeacher() : await loadParent(); } catch (e) { error.value = `无法加载此演示内容（${e.message}）。请启动 API 后重试。`; } finally { loading.value = false; } }
-async function parse() { if (!teacher.value.draft.trim()) return; loading.value = true; error.value = ''; try { teacher.value.suggestion = (await api.teacher.parseSchedule(teacher.value.draft, accountId.value)).suggestion; } catch (e) { error.value = e.message === 'INVALID_AI_OUTPUT' ? 'AI 草稿需要修正。请换一种表述后重试。' : `AI 预览暂不可用（${e.message}）。您的描述已保留，可稍后重试。`; } finally { loading.value = false; } }
-async function confirm(suggestion) { loading.value = true; error.value = ''; try { const studentIds = teacher.value.students.filter((s) => suggestion.studentNames.includes(s.name)).map((s) => s.id); await api.teacher.createLesson({ studentIds, startAt: suggestion.startAt }, accountId.value); teacherScheduleDate.value = suggestion.startAt; teacher.value.suggestion = null; teacher.value.draft = ''; notice.value = '预约已确认，并已加入课表。'; await loadTeacher(); } catch (e) { error.value = `预约未保存（${e.message}）。请检查可用课时后重试。`; } finally { loading.value = false; } }
-function openLesson(lessonId, event) { lessonTrigger.value = event?.currentTarget ?? event ?? document.activeElement; selectedLesson.value = teacher.value.lessons.find((lesson) => lesson.id === lessonId) ?? null; }
+let accountEpoch = 0;
+function clearAccountState() {
+  accountEpoch += 1;
+  teacher.value = emptyTeacher();
+  parent.value = emptyParent();
+  selectedLesson.value = null;
+  lessonTrigger.value = null;
+  drawerError.value = '';
+  workflow.value = null;
+  workflowLesson.value = null;
+  workflowTrigger.value = null;
+  teacherScheduleDate.value = null;
+  error.value = '';
+  notice.value = '';
+  loading.value = false;
+}
+function isCurrentAccount(epoch, expectedRole, expectedAccountId) {
+  return epoch === accountEpoch && role.value === expectedRole && accountId.value === expectedAccountId;
+}
+function isCurrentEpoch(epoch) {
+  return epoch === accountEpoch;
+}
+async function loadTeacher(epoch = accountEpoch, expectedAccountId = accountId.value) {
+  const [lessons, students, orders] = await Promise.all([
+    api.teacher.schedule(expectedAccountId),
+    api.teacher.students(expectedAccountId),
+    api.teacher.orders(expectedAccountId),
+  ]);
+  if (isCurrentAccount(epoch, 'teacher', expectedAccountId)) teacher.value = { ...teacher.value, lessons, students, orders };
+}
+async function loadParent(epoch = accountEpoch, expectedAccountId = accountId.value) {
+  const data = await api.parent.dashboard(expectedAccountId);
+  if (isCurrentAccount(epoch, 'parent', expectedAccountId)) parent.value = { ...parent.value, data };
+}
+async function load() {
+  const epoch = accountEpoch;
+  const expectedRole = role.value;
+  const expectedAccountId = accountId.value;
+  loading.value = true;
+  error.value = '';
+  try {
+    expectedRole === 'teacher'
+      ? await loadTeacher(epoch, expectedAccountId)
+      : await loadParent(epoch, expectedAccountId);
+  } catch (e) {
+    if (isCurrentAccount(epoch, expectedRole, expectedAccountId)) error.value = `无法加载此演示内容（${e.message}）。请启动 API 后重试。`;
+  } finally {
+    if (isCurrentAccount(epoch, expectedRole, expectedAccountId)) loading.value = false;
+  }
+}
+async function parse() {
+  if (!teacher.value.draft.trim()) return;
+  const epoch = accountEpoch;
+  const expectedAccountId = accountId.value;
+  const draft = teacher.value.draft;
+  loading.value = true;
+  error.value = '';
+  try {
+    const result = await api.teacher.parseSchedule(draft, expectedAccountId);
+    if (isCurrentEpoch(epoch)) teacher.value.suggestion = result.suggestion;
+  } catch (e) {
+    if (isCurrentEpoch(epoch)) error.value = e.message === 'INVALID_AI_OUTPUT' ? 'AI 草稿需要修正。请换一种表述后重试。' : `AI 预览暂不可用（${e.message}）。您的描述已保留，可稍后重试。`;
+  } finally {
+    if (isCurrentEpoch(epoch)) loading.value = false;
+  }
+}
+async function confirm(suggestion) {
+  const epoch = accountEpoch;
+  const expectedAccountId = accountId.value;
+  loading.value = true;
+  error.value = '';
+  try {
+    const studentIds = teacher.value.students.filter((s) => suggestion.studentNames.includes(s.name)).map((s) => s.id);
+    await api.teacher.createLesson({ studentIds, startAt: suggestion.startAt }, expectedAccountId);
+    if (!isCurrentEpoch(epoch)) return;
+    teacherScheduleDate.value = suggestion.startAt;
+    teacher.value.suggestion = null;
+    teacher.value.draft = '';
+    notice.value = '预约已确认，并已加入课表。';
+    await loadTeacher(epoch, expectedAccountId);
+  } catch (e) {
+    if (isCurrentEpoch(epoch)) error.value = `预约未保存（${e.message}）。请检查可用课时后重试。`;
+  } finally {
+    if (isCurrentEpoch(epoch)) loading.value = false;
+  }
+}
+function openLesson(lessonId, event) { error.value = ''; drawerError.value = ''; lessonTrigger.value = event?.currentTarget ?? event ?? document.activeElement; selectedLesson.value = teacher.value.lessons.find((lesson) => lesson.id === lessonId) ?? null; }
 function closeDrawer() {
   const trigger = lessonTrigger.value;
   selectedLesson.value = null;
+  drawerError.value = '';
   nextTick(() => requestAnimationFrame(() => trigger?.focus()));
 }
 function openWorkflow(name, event, lesson = null) {
@@ -54,63 +140,130 @@ function editSelectedLesson() {
   const lesson = selectedLesson.value;
   const trigger = lessonTrigger.value;
   selectedLesson.value = null;
+  drawerError.value = '';
   lessonTrigger.value = null;
   openWorkflow('schedule', trigger, lesson);
 }
 async function saveManualLesson(payload) {
+  const epoch = accountEpoch;
+  const expectedAccountId = accountId.value;
   loading.value = true; error.value = '';
   try {
-    if (workflowLesson.value) await api.teacher.editLesson(workflowLesson.value.id, payload, accountId.value);
-    else await api.teacher.createLesson(payload, accountId.value);
+    const editingLesson = workflowLesson.value;
+    if (editingLesson) await api.teacher.editLesson(editingLesson.id, payload, expectedAccountId);
+    else await api.teacher.createLesson(payload, expectedAccountId);
+    if (!isCurrentEpoch(epoch)) return;
     teacherScheduleDate.value = payload.startAt;
-    await loadTeacher();
-    notice.value = workflowLesson.value ? '课程修改已保存。' : '手动排课已保存。';
+    await loadTeacher(epoch, expectedAccountId);
+    if (!isCurrentEpoch(epoch)) return;
+    notice.value = editingLesson ? '课程修改已保存。' : '手动排课已保存。';
     closeWorkflow();
   } catch (e) {
-    error.value = `无法保存课程（${e.message}）。请检查年级、课时与时间冲突。`;
-  } finally { loading.value = false; }
+    if (isCurrentEpoch(epoch)) error.value = `无法保存课程（${e.message}）。请检查年级、课时与时间冲突。`;
+  } finally { if (isCurrentEpoch(epoch)) loading.value = false; }
 }
 async function createStudent(payload) {
+  const epoch = accountEpoch;
+  const expectedAccountId = accountId.value;
   loading.value = true; error.value = '';
-  try { await api.teacher.createStudent(payload, accountId.value); await loadTeacher(); notice.value = '学员已新增。'; closeWorkflow(); }
-  catch (e) { error.value = `无法新增学员（${e.message}）。`; }
-  finally { loading.value = false; }
+  try { await api.teacher.createStudent(payload, expectedAccountId); if (!isCurrentEpoch(epoch)) return; await loadTeacher(epoch, expectedAccountId); if (!isCurrentEpoch(epoch)) return; notice.value = '学员已新增。'; closeWorkflow(); }
+  catch (e) { if (isCurrentEpoch(epoch)) error.value = `无法新增学员（${e.message}）。`; }
+  finally { if (isCurrentEpoch(epoch)) loading.value = false; }
 }
 async function updateStudent({ id, input }) {
+  const epoch = accountEpoch;
+  const expectedAccountId = accountId.value;
   loading.value = true; error.value = '';
-  try { await api.teacher.updateStudent(id, input, accountId.value); await loadTeacher(); notice.value = '学员资料已更新。'; closeWorkflow(); }
-  catch (e) { error.value = `无法更新学员（${e.message}）。`; }
-  finally { loading.value = false; }
+  try { await api.teacher.updateStudent(id, input, expectedAccountId); if (!isCurrentEpoch(epoch)) return; await loadTeacher(epoch, expectedAccountId); if (!isCurrentEpoch(epoch)) return; notice.value = '学员资料已更新。'; closeWorkflow(); }
+  catch (e) { if (isCurrentEpoch(epoch)) error.value = `无法更新学员（${e.message}）。`; }
+  finally { if (isCurrentEpoch(epoch)) loading.value = false; }
 }
 async function archiveStudent(id) {
+  const epoch = accountEpoch;
+  const expectedAccountId = accountId.value;
   loading.value = true; error.value = '';
-  try { await api.teacher.archiveStudent(id, accountId.value); await loadTeacher(); notice.value = '学员已停用，历史记录仍保留。'; closeWorkflow(); }
-  catch (e) { error.value = `无法停用学员（${e.message}）。`; }
-  finally { loading.value = false; }
+  try { await api.teacher.archiveStudent(id, expectedAccountId); if (!isCurrentEpoch(epoch)) return; await loadTeacher(epoch, expectedAccountId); if (!isCurrentEpoch(epoch)) return; notice.value = '学员已停用，历史记录仍保留。'; closeWorkflow(); }
+  catch (e) { if (isCurrentEpoch(epoch)) error.value = `无法停用学员（${e.message}）。`; }
+  finally { if (isCurrentEpoch(epoch)) loading.value = false; }
 }
 async function createManualOrder(payload) {
+  const epoch = accountEpoch;
+  const expectedAccountId = accountId.value;
   loading.value = true; error.value = '';
-  try { await api.teacher.createManualOrder(payload, accountId.value); await loadTeacher(); notice.value = '扫码登记（模拟）订单已创建，等待明确确认。'; closeWorkflow(); }
-  catch (e) { error.value = `无法登记订单（${e.message}）。`; }
-  finally { loading.value = false; }
+  try { await api.teacher.createManualOrder(payload, expectedAccountId); if (!isCurrentEpoch(epoch)) return; await loadTeacher(epoch, expectedAccountId); if (!isCurrentEpoch(epoch)) return; notice.value = '扫码登记（模拟）订单已创建，等待明确确认。'; closeWorkflow(); }
+  catch (e) { if (isCurrentEpoch(epoch)) error.value = `无法登记订单（${e.message}）。`; }
+  finally { if (isCurrentEpoch(epoch)) loading.value = false; }
 }
 async function confirmManualOrder(id, event) {
+  const epoch = accountEpoch;
+  const expectedAccountId = accountId.value;
   const trigger = event?.currentTarget ?? event;
   loading.value = true; error.value = '';
   try {
-    await api.teacher.confirmManualOrder(id, accountId.value);
-    await loadTeacher();
+    await api.teacher.confirmManualOrder(id, expectedAccountId);
+    if (!isCurrentEpoch(epoch)) return;
+    await loadTeacher(epoch, expectedAccountId);
+    if (!isCurrentEpoch(epoch)) return;
     notice.value = '扫码登记（模拟）已确认，服务器课时余额已刷新。';
     await nextTick();
     requestAnimationFrame(() => trigger?.focus());
-  } catch (e) { error.value = `无法确认订单（${e.message}）。`; }
-  finally { loading.value = false; }
+  } catch (e) { if (isCurrentEpoch(epoch)) error.value = `无法确认订单（${e.message}）。`; }
+  finally { if (isCurrentEpoch(epoch)) loading.value = false; }
 }
-async function transition(action) { if (!selectedLesson.value) return; loading.value = true; try { await api.teacher.updateLesson(selectedLesson.value.id, action, accountId.value); closeDrawer(); notice.value = `课程已${action === 'complete' ? '完成' : '取消'}。`; await loadTeacher(); } catch (e) { error.value = `无法${action === 'complete' ? '完成' : '取消'}课程（${e.message}）。`; } finally { loading.value = false; } }
-async function purchase(option) { if (!child.value) return; loading.value = true; try { parent.value.order = await api.parent.createOrder({ studentId: child.value.id, packageId: option.packageId }, accountId.value); } catch (e) { error.value = `无法创建演示订单（${e.message}）。`; } finally { loading.value = false; } }
-async function simulatePayment() { loading.value = true; try { parent.value.order = await api.parent.simulatePayment(parent.value.order.id, accountId.value); notice.value = '模拟付款已完成，演示课时余额已刷新。'; await loadParent(); } catch (e) { error.value = `无法完成模拟付款（${e.message}）。`; } finally { loading.value = false; } }
+async function transition(action) {
+  if (!selectedLesson.value) return;
+  const epoch = accountEpoch;
+  const expectedAccountId = accountId.value;
+  const lessonId = selectedLesson.value.id;
+  loading.value = true;
+  drawerError.value = '';
+  try {
+    await api.teacher.updateLesson(lessonId, action, expectedAccountId);
+    if (!isCurrentEpoch(epoch)) return;
+    closeDrawer();
+    notice.value = `课程已${action === 'complete' ? '完成' : '取消'}。`;
+    await loadTeacher(epoch, expectedAccountId);
+  } catch (e) {
+    if (isCurrentEpoch(epoch)) drawerError.value = `无法${action === 'complete' ? '完成' : '取消'}课程（${e.message}）。`;
+  } finally {
+    if (isCurrentEpoch(epoch)) loading.value = false;
+  }
+}
+async function purchase(option) {
+  if (!child.value) return;
+  const epoch = accountEpoch;
+  const expectedAccountId = accountId.value;
+  const studentId = child.value.id;
+  loading.value = true;
+  try {
+    const order = await api.parent.createOrder({ studentId, packageId: option.packageId }, expectedAccountId);
+    if (isCurrentEpoch(epoch)) parent.value.order = order;
+  } catch (e) {
+    if (isCurrentEpoch(epoch)) error.value = `无法创建演示订单（${e.message}）。`;
+  } finally {
+    if (isCurrentEpoch(epoch)) loading.value = false;
+  }
+}
+async function simulatePayment() {
+  const epoch = accountEpoch;
+  const expectedAccountId = accountId.value;
+  const orderId = parent.value.order.id;
+  loading.value = true;
+  try {
+    const order = await api.parent.simulatePayment(orderId, expectedAccountId);
+    if (!isCurrentEpoch(epoch)) return;
+    parent.value.order = order;
+    notice.value = '模拟付款已完成，演示课时余额已刷新。';
+    await loadParent(epoch, expectedAccountId);
+  } catch (e) {
+    if (isCurrentEpoch(epoch)) error.value = `无法完成模拟付款（${e.message}）。`;
+  } finally {
+    if (isCurrentEpoch(epoch)) loading.value = false;
+  }
+}
 async function enterAccount(account) {
   if (!pendingRole.value || account.role !== pendingRole.value) return;
+  clearAccountState();
   selectRole({ role: pendingRole.value, accountId: account.id });
   pendingRole.value = null;
   accountChoices.value = [];
@@ -142,7 +295,7 @@ async function cancelAccountChoice() {
   await nextTick();
   roleGateDestination.value?.focus();
 }
-async function changeRole() { resetRole(); pendingRole.value = null; accountChoices.value = []; notice.value = ''; error.value = ''; await nextTick(); roleGateDestination.value?.focus(); }
+async function changeRole() { clearAccountState(); resetRole(); pendingRole.value = null; accountChoices.value = []; await nextTick(); roleGateDestination.value?.focus(); }
 function openAi() { notice.value = 'AI 只生成待确认草稿；确认前不会更改课表或课时。'; }
 onMounted(() => {
   if (role.value && accountId.value) load();
@@ -226,7 +379,7 @@ onMounted(() => {
       <p v-if="notice" class="parent-message parent-message--notice" role="status">{{ notice }}</p>
     </ParentShell>
   </main>
-  <LessonDrawer v-if="selectedLesson" :lesson="selectedLesson" :participants="participants" :format-date="formatDate" :loading="loading" @close="closeDrawer" @edit="editSelectedLesson" @cancel="transition('cancel')" @complete="transition('complete')" />
+  <LessonDrawer v-if="selectedLesson" :lesson="selectedLesson" :participants="participants" :format-date="formatDate" :loading="loading" :error="drawerError" @close="closeDrawer" @edit="editSelectedLesson" @cancel="transition('cancel')" @complete="transition('complete')" />
   <StudentManager
     v-if="workflow === 'students'"
     :students="teacher.students"

@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
+import { businessDateKey, businessTimeLabel } from '../business-time.js';
 
 const props = defineProps({
   lessons: { type: Array, default: () => [] },
@@ -8,24 +9,16 @@ const props = defineProps({
 
 const emit = defineEmits(['select-lesson', 'update:selected-date']);
 
-const pad = (value) => String(value).padStart(2, '0');
-const dateKey = (value) => {
-  const date = new Date(value);
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-};
-const timeLabel = (value) => {
-  const date = new Date(value);
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-};
+const dateKey = (value) => businessDateKey(value);
+const timeLabel = (value) => businessTimeLabel(value);
 const startOfWeek = (value) => {
-  const date = new Date(value);
-  date.setHours(0, 0, 0, 0);
-  date.setDate(date.getDate() - ((date.getDay() + 6) % 7));
+  const date = new Date(`${dateKey(value)}T12:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
   return date;
 };
 const addDays = (value, count) => {
   const date = new Date(value);
-  date.setDate(date.getDate() + count);
+  date.setUTCDate(date.getUTCDate() + count);
   return date;
 };
 
@@ -39,11 +32,12 @@ const weekDays = computed(() => Array.from({ length: 7 }, (_, index) => addDays(
 const selectedLessons = computed(() => sortedLessons.value.filter(
   (lesson) => dateKey(lesson.startsAt) === selectedDay.value,
 ));
-const selectedDate = computed(() => new Date(`${selectedDay.value}T12:00:00`));
+const selectedDate = computed(() => new Date(`${selectedDay.value}T12:00:00.000Z`));
 const selectedDayLabel = computed(() => new Intl.DateTimeFormat('zh-CN', {
   month: 'long',
   day: 'numeric',
   weekday: 'long',
+  timeZone: 'UTC',
 }).format(selectedDate.value));
 
 const statusLabel = (status) => ({
@@ -98,8 +92,8 @@ watch(() => props.selectedDate, (value) => {
         :aria-pressed="dateKey(day) === selectedDay"
         @click="selectDay(day)"
       >
-        <span>{{ new Intl.DateTimeFormat('zh-CN', { weekday: 'short' }).format(day) }}</span>
-        <strong>{{ day.getDate() }}</strong>
+        <span>{{ new Intl.DateTimeFormat('zh-CN', { weekday: 'short', timeZone: 'UTC' }).format(day) }}</span>
+        <strong>{{ day.getUTCDate() }}</strong>
       </button>
     </div>
 

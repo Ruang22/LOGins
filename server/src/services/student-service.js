@@ -29,6 +29,24 @@ async function lockStudent(tx, studentId) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`student:${studentId}`}))`;
 }
 
+async function lockStudents(tx, studentIds) {
+  for (const studentId of [...new Set(studentIds)].sort()) await lockStudent(tx, studentId);
+}
+
+async function activeGroupLessons(tx, studentId) {
+  return tx.lesson.findMany({
+    where: {
+      status: 'scheduled',
+      participants: { some: { studentId } },
+    },
+    select: {
+      participants: {
+        select: { student: { select: { id: true, grade: true } } },
+      },
+    },
+  });
+}
+
 async function findOrCreateParent(tx, { parentEmail, parentName }, { updateNameForParentId = null } = {}) {
   const parent = await tx.user.upsert({
     where: { email: parentEmail },
@@ -65,7 +83,11 @@ export async function updateStudent({ studentId, input }, teacher) {
   const parsed = updateStudentSchema.parse(input);
 
   return prisma.$transaction(async (tx) => {
-    await lockStudent(tx, studentId);
+    const discoveredLessons = parsed.grade === undefined ? [] : await activeGroupLessons(tx, studentId);
+    await lockStudents(tx, [
+      studentId,
+      ...discoveredLessons.flatMap(({ participants }) => participants.map(({ student }) => student.id)),
+    ]);
     const student = await tx.student.findUnique({
       where: { id: studentId },
       include: { parent: true },
@@ -76,6 +98,15 @@ export async function updateStudent({ studentId, input }, teacher) {
       && parsed.totalCredits < student.attendedCredits + student.reservedCredits
     ) {
       throw new StudentError('CREDIT_TOTAL_TOO_LOW');
+    }
+    if (parsed.grade !== undefined && parsed.grade !== student.grade) {
+      const lessons = await activeGroupLessons(tx, studentId);
+      const splitsGroup = lessons.some(({ participants }) => new Set(
+        participants.map(({ student: participant }) => (
+          participant.id === studentId ? parsed.grade : participant.grade
+        )),
+      ).size > 1);
+      if (splitsGroup) throw new StudentError('GRADE_CHANGE_CONFLICT');
     }
 
     let parentId = student.parentId;
@@ -99,7 +130,7 @@ export async function updateStudent({ studentId, input }, teacher) {
       },
       select: studentSelect,
     });
-  });
+  }, { isolationLevel: 'Serializable' });
 }
 
 export async function archiveStudent({ studentId }, teacher) {

@@ -46,4 +46,7 @@ export const test = base.extend({
     await resetE2eDatabase(e2ePrisma);
     await use();
   }, { auto: true }],
+  db: async ({}, use) => {
+    await use(e2ePrisma);
+  },
 });

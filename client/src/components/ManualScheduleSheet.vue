@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { businessDateTimeParts } from '../business-time.js';
 
 const props = defineProps({
   students: { type: Array, default: () => [] },
@@ -9,14 +10,12 @@ const props = defineProps({
 });
 const emit = defineEmits(['save', 'close']);
 
-const BUSINESS_OFFSET_MINUTES = 8 * 60;
-const pad = (value) => String(value).padStart(2, '0');
 const localParts = (value) => {
   if (!value) return null;
-  const date = new Date(new Date(value).getTime() + BUSINESS_OFFSET_MINUTES * 60_000);
+  const { year, month, day, hour, minute } = businessDateTimeParts(value);
   return {
-    date: `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`,
-    time: `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`,
+    date: `${year}-${month}-${day}`,
+    time: `${hour}:${minute}`,
   };
 };
 const existing = localParts(props.lesson?.startsAt);

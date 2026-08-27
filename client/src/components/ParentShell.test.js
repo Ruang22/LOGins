@@ -154,4 +154,23 @@ describe('ParentShell', () => {
 
     expect(wrapper.get('[data-testid="next-lesson-empty"]').text()).toContain('还没有安排下一节课');
   });
+
+  it('在非 +08 设备时区仍把下一课与历史轨迹显示为北京时间 18:05', () => {
+    const wrapper = mount(ParentShell, {
+      props: {
+        dashboard: dashboard({
+          students: [{
+            ...firstChild,
+            lessons: [
+              { id: 'lesson-history-timezone', startsAt: '2020-01-02T10:05:00.000Z', status: 'completed' },
+              { id: 'lesson-next-timezone', startsAt: '2099-01-03T10:05:00.000Z', status: 'scheduled' },
+            ],
+          }],
+        }),
+      },
+    });
+
+    expect(wrapper.get('[data-testid="next-lesson-time"]').text()).toBe('18:05');
+    expect(wrapper.get('[data-testid="lesson-trail"] time').text()).toContain('18:05');
+  });
 });

@@ -30,7 +30,18 @@ async function chooseRole(wrapper, role) {
   await flushPromises();
 }
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 afterEach(() => {
+  vi.useRealTimers();
   sessionStorage.clear();
   vi.restoreAllMocks();
 });
@@ -103,14 +114,14 @@ describe('App', () => {
   it('确认 AI 草稿后将课表导航到新课程日期', async () => {
     const existingLesson = {
       id: 'lesson-existing',
-      startsAt: '2031-01-02T18:05:00',
+      startsAt: '2031-01-02T18:05:00+08:00',
       durationMinutes: 60,
       status: 'scheduled',
       participants: [{ student: { name: '林一', grade: 7 } }],
     };
     const confirmedLesson = {
       id: 'lesson-confirmed',
-      startsAt: '2031-01-06T09:30:00',
+      startsAt: '2031-01-06T09:30:00+08:00',
       durationMinutes: 60,
       status: 'scheduled',
       participants: [{ student: { name: '林一', grade: 7 } }],
@@ -292,5 +303,270 @@ describe('App', () => {
     await wrapper.get('[data-testid="confirm-order-a"]').trigger('click');
     await flushPromises();
     expect(confirmManualOrder).toHaveBeenCalledWith('order-a', 'teacher-local-id');
+  });
+
+  it('教师切换到另一教师时在新加载完成前清空旧教师数据，失败留在新账户工作台报告', async () => {
+    const teacherAccounts = [
+      accounts.teacher[0],
+      { id: 'teacher-second-id', name: '周老师', email: 'zhou.teacher@example.test', role: 'teacher' },
+    ];
+    const secondSchedule = deferred();
+    const secondStudents = deferred();
+    const secondOrders = deferred();
+    vi.spyOn(api, 'accounts').mockResolvedValue(teacherAccounts);
+    vi.spyOn(api.teacher, 'schedule')
+      .mockResolvedValueOnce([])
+      .mockReturnValueOnce(secondSchedule.promise);
+    vi.spyOn(api.teacher, 'students')
+      .mockResolvedValueOnce([{ ...managedStudent, name: '旧教师学员' }])
+      .mockReturnValueOnce(secondStudents.promise);
+    vi.spyOn(api.teacher, 'orders')
+      .mockResolvedValueOnce([])
+      .mockReturnValueOnce(secondOrders.promise);
+    const wrapper = mount(App, { global: { stubs: { RoleGate: false } } });
+
+    await wrapper.get('[data-testid="choose-teacher"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-account-id="teacher-local-id"]').trigger('click');
+    await flushPromises();
+    await wrapper.findAll('.teacher-nav button').find((button) => button.text().includes('学员')).trigger('click');
+    expect(wrapper.text()).toContain('旧教师学员');
+
+    await wrapper.findAll('[data-testid="teacher-shell"] button').find((button) => button.text() === '切换身份').trigger('click');
+    await wrapper.get('[data-testid="choose-teacher"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-account-id="teacher-second-id"]').trigger('click');
+    await wrapper.findAll('.teacher-nav button').find((button) => button.text().includes('学员')).trigger('click');
+
+    expect(wrapper.text()).not.toContain('旧教师学员');
+    expect(wrapper.get('.teacher-refresh').text()).toContain('正在刷新');
+
+    secondSchedule.reject(new Error('SECOND_TEACHER_UNAVAILABLE'));
+    secondStudents.resolve([]);
+    secondOrders.resolve([]);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="teacher-shell"] [role="alert"]').text()).toContain('SECOND_TEACHER_UNAVAILABLE');
+    expect(wrapper.text()).not.toContain('旧教师学员');
+  });
+
+  it('家长切换到另一家长时不在加载中或失败后显示旧孩子与旧订单', async () => {
+    const parentAccounts = [
+      accounts.parent[0],
+      { id: 'parent-second-id', name: '周家长', email: 'zhou.parent@example.test', role: 'parent' },
+    ];
+    const secondDashboard = deferred();
+    vi.spyOn(api, 'accounts').mockResolvedValue(parentAccounts);
+    vi.spyOn(api.parent, 'dashboard')
+      .mockResolvedValueOnce({
+        students: [{ ...managedStudent, name: '旧账户孩子', lessons: [] }],
+        orders: [{ id: 'old-order', packageName: '旧账户订单', createdAt: '2032-01-01T10:00:00Z' }],
+        packages: [],
+      })
+      .mockReturnValueOnce(secondDashboard.promise);
+    const wrapper = mount(App, { global: { stubs: { RoleGate: false } } });
+
+    await wrapper.get('[data-testid="choose-parent"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-account-id="parent-local-id"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('旧账户孩子');
+    expect(wrapper.text()).toContain('旧账户订单');
+
+    await wrapper.findAll('[data-testid="parent-shell"] button').find((button) => button.text() === '切换身份').trigger('click');
+    await wrapper.get('[data-testid="choose-parent"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-account-id="parent-second-id"]').trigger('click');
+
+    expect(wrapper.text()).not.toContain('旧账户孩子');
+    expect(wrapper.text()).not.toContain('旧账户订单');
+    expect(wrapper.text()).toContain('正在读取演示课程轨迹');
+
+    secondDashboard.reject(new Error('SECOND_PARENT_UNAVAILABLE'));
+    await flushPromises();
+    expect(wrapper.get('[data-testid="parent-shell"] [role="alert"]').text()).toContain('SECOND_PARENT_UNAVAILABLE');
+    expect(wrapper.text()).not.toContain('旧账户孩子');
+    expect(wrapper.text()).not.toContain('旧账户订单');
+  });
+
+  it('教师与家长之间切换时清除 AI 草稿、suggestion、订单、错误和打开的工作流', async () => {
+    const suggestion = {
+      courseName: '英语课',
+      startAt: '2032-03-01T18:05:00+08:00',
+      studentNames: ['林一'],
+    };
+    vi.spyOn(api, 'accounts').mockImplementation(async (role) => accounts[role]);
+    vi.spyOn(api.teacher, 'schedule').mockResolvedValue([]);
+    vi.spyOn(api.teacher, 'students').mockResolvedValue([managedStudent]);
+    vi.spyOn(api.teacher, 'orders').mockResolvedValue([]);
+    vi.spyOn(api.teacher, 'parseSchedule').mockResolvedValue({ suggestion });
+    vi.spyOn(api.parent, 'dashboard').mockResolvedValue({ students: [], orders: [], packages: [] });
+    const wrapper = mount(App, { global: { stubs: { RoleGate: false } } });
+
+    await wrapper.get('[data-testid="choose-teacher"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('button[aria-controls="teacher-ai-panel"]').trigger('click');
+    await wrapper.get('#teacher-schedule-note').setValue('必须清除的旧草稿');
+    await wrapper.get('.teacher-ai-workbench__composer .primary').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="open-manual-schedule"]').trigger('click');
+    expect(wrapper.get('[role="dialog"]').exists()).toBe(true);
+
+    await wrapper.findAll('[data-testid="teacher-shell"] button').find((button) => button.text() === '切换身份').trigger('click');
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="choose-parent"]').trigger('click');
+    await flushPromises();
+    await wrapper.findAll('[data-testid="parent-shell"] button').find((button) => button.text() === '切换身份').trigger('click');
+    await wrapper.get('[data-testid="choose-teacher"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('button[aria-controls="teacher-ai-panel"]').trigger('click');
+
+    expect(wrapper.get('#teacher-schedule-note').element.value).toBe('');
+    expect(wrapper.text()).not.toContain('必须清除的旧草稿');
+    expect(wrapper.find('.ai-panel .preview-stamp').exists()).toBe(false);
+  });
+
+  it('切换账户后忽略旧账户晚返回的 AI 失败与加载状态', async () => {
+    const oldParse = deferred();
+    const teacherAccounts = [
+      accounts.teacher[0],
+      { id: 'teacher-second-id', name: '周老师', email: 'zhou.teacher@example.test', role: 'teacher' },
+    ];
+    vi.spyOn(api, 'accounts').mockResolvedValue(teacherAccounts);
+    vi.spyOn(api.teacher, 'schedule').mockResolvedValue([]);
+    vi.spyOn(api.teacher, 'students').mockResolvedValue([managedStudent]);
+    vi.spyOn(api.teacher, 'orders').mockResolvedValue([]);
+    const parseSchedule = vi.spyOn(api.teacher, 'parseSchedule').mockReturnValue(oldParse.promise);
+    const wrapper = mount(App, { global: { stubs: { RoleGate: false } } });
+
+    await wrapper.get('[data-testid="choose-teacher"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-account-id="teacher-local-id"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('button[aria-controls="teacher-ai-panel"]').trigger('click');
+    await wrapper.get('#teacher-schedule-note').setValue('旧账户进行中的草稿');
+    await wrapper.get('.teacher-ai-workbench__composer .primary').trigger('click');
+    expect(parseSchedule).toHaveBeenCalledTimes(1);
+    await wrapper.findAll('[data-testid="teacher-shell"] button').find((button) => button.text() === '切换身份').trigger('click');
+    await wrapper.get('[data-testid="choose-teacher"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-account-id="teacher-second-id"]').trigger('click');
+    await flushPromises();
+
+    oldParse.reject(new Error('OLD_ACCOUNT_FAILURE'));
+    await flushPromises();
+    await wrapper.get('button[aria-controls="teacher-ai-panel"]').trigger('click');
+
+    expect(wrapper.get('#teacher-schedule-note').element.value).toBe('');
+    expect(wrapper.find('[data-testid="teacher-shell"] [role="alert"]').exists()).toBe(false);
+    expect(wrapper.get('.teacher-refresh').text()).toBe('刷新');
+  });
+
+  it('切换账户后旧写入的延迟刷新不能在新教师会话发布通知', async () => {
+    const teacherAccounts = [
+      accounts.teacher[0],
+      { id: 'teacher-second-id', name: '周老师', email: 'zhou.teacher@example.test', role: 'teacher' },
+    ];
+    const oldScheduleRefresh = deferred();
+    const oldStudentRefresh = deferred();
+    const oldOrderRefresh = deferred();
+    vi.spyOn(api, 'accounts').mockResolvedValue(teacherAccounts);
+    vi.spyOn(api.teacher, 'schedule')
+      .mockResolvedValueOnce([])
+      .mockReturnValueOnce(oldScheduleRefresh.promise)
+      .mockResolvedValueOnce([]);
+    vi.spyOn(api.teacher, 'students')
+      .mockResolvedValueOnce([managedStudent])
+      .mockReturnValueOnce(oldStudentRefresh.promise)
+      .mockResolvedValueOnce([]);
+    vi.spyOn(api.teacher, 'orders')
+      .mockResolvedValueOnce([])
+      .mockReturnValueOnce(oldOrderRefresh.promise)
+      .mockResolvedValueOnce([]);
+    vi.spyOn(api.teacher, 'createStudent').mockResolvedValue(managedStudent);
+    const wrapper = mount(App, { global: { stubs: { RoleGate: false } } });
+
+    await wrapper.get('[data-testid="choose-teacher"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-account-id="teacher-local-id"]').trigger('click');
+    await flushPromises();
+    await wrapper.findAll('.teacher-nav button').find((button) => button.text().includes('学员')).trigger('click');
+    await wrapper.get('[data-testid="manage-students"]').trigger('click');
+    await wrapper.get('[name="name"]').setValue('延迟写入学员');
+    await wrapper.get('[name="grade"]').setValue('8');
+    await wrapper.get('[name="parentName"]').setValue('延迟家长');
+    await wrapper.get('[name="parentEmail"]').setValue('delayed@example.test');
+    await wrapper.get('[name="totalCredits"]').setValue('2');
+    await wrapper.get('[role="dialog"] form').trigger('submit');
+    await flushPromises();
+
+    await wrapper.findAll('[data-testid="teacher-shell"] button').find((button) => button.text() === '切换身份').trigger('click');
+    await wrapper.get('[data-testid="choose-teacher"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-account-id="teacher-second-id"]').trigger('click');
+    await flushPromises();
+
+    oldScheduleRefresh.resolve([]);
+    oldStudentRefresh.resolve([managedStudent]);
+    oldOrderRefresh.resolve([]);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="teacher-shell"] [role="status"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('学员已新增');
+  });
+
+  it('在非 +08 设备时区仍在课程抽屉显示北京时间 18:05', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2032-03-01T12:00:00.000Z'));
+    const lesson = {
+      id: 'lesson-drawer-timezone',
+      startsAt: '2032-03-01T10:05:00.000Z',
+      durationMinutes: 60,
+      status: 'scheduled',
+      participants: [{ student: { name: '林一', grade: 8 } }],
+    };
+    vi.spyOn(api.teacher, 'schedule').mockResolvedValue([lesson]);
+    vi.spyOn(api.teacher, 'students').mockResolvedValue([managedStudent]);
+    vi.spyOn(api.teacher, 'orders').mockResolvedValue([]);
+    const wrapper = mount(App, { global: { stubs: { RoleGate: false } } });
+
+    await chooseRole(wrapper, 'teacher');
+    await wrapper.get('[data-testid="schedule-row"]').trigger('click');
+
+    expect(wrapper.get('[role="dialog"]').text()).toContain('18:05');
+  });
+
+  it('课程抽屉写入失败时在抽屉内报告错误并保留重试动作', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2032-03-01T12:00:00.000Z'));
+    const lesson = {
+      id: 'lesson-transition-retry',
+      startsAt: '2032-03-01T10:05:00.000Z',
+      durationMinutes: 60,
+      status: 'scheduled',
+      participants: [{ student: { name: '林一', grade: 8 } }],
+    };
+    vi.spyOn(api.teacher, 'schedule').mockResolvedValue([lesson]);
+    vi.spyOn(api.teacher, 'students').mockResolvedValue([managedStudent]);
+    vi.spyOn(api.teacher, 'orders').mockResolvedValue([]);
+    const updateLesson = vi.spyOn(api.teacher, 'updateLesson')
+      .mockRejectedValueOnce(new Error('WRITE_FAILED'))
+      .mockResolvedValueOnce({ ...lesson, status: 'completed' });
+    const wrapper = mount(App, { global: { stubs: { RoleGate: false } } });
+
+    await chooseRole(wrapper, 'teacher');
+    await wrapper.get('[data-testid="schedule-row"]').trigger('click');
+    const completeAction = () => wrapper.get('[role="dialog"]').findAll('button')
+      .find((button) => button.text() === '标记为已完成');
+    await completeAction().trigger('click');
+    await flushPromises();
+
+    expect(wrapper.get('[role="dialog"] [role="alert"]').text()).toContain('WRITE_FAILED');
+    expect(wrapper.find('main [role="alert"]').exists()).toBe(false);
+    expect(completeAction().attributes('disabled')).toBeUndefined();
+
+    await completeAction().trigger('click');
+    await flushPromises();
+    expect(updateLesson).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
   });
 });
