@@ -243,3 +243,39 @@ test('teacher student routes reject invalid input and unknown students', async (
     .set('x-demo-user', 'teacher-demo')
     .expect(404, { code: 'STUDENT_NOT_FOUND' });
 });
+
+test('concurrent grade and scheduling routes never return 500 or persist a mixed-grade group', async () => {
+  await seedDatabase(prisma);
+  const firstStudent = await createStudent({ grade: 8, credits: 4 });
+  const secondStudent = await createStudent({ grade: 8, credits: 4 });
+  const app = createApp();
+  const startAt = new Date(Date.UTC(2040, 0, 1, 0, Math.floor(Math.random() * 500000))).toISOString();
+
+  const responses = await Promise.all([
+    request(app)
+      .post('/api/teacher/lessons')
+      .set('x-demo-user', 'teacher-demo')
+      .send({ studentIds: [firstStudent.id, secondStudent.id], startAt, durationMinutes: 60, note: '' }),
+    request(app)
+      .patch(`/api/teacher/students/${firstStudent.id}`)
+      .set('x-demo-user', 'teacher-demo')
+      .send({ grade: 9 }),
+  ]);
+
+  const lessonResponse = responses[0];
+  if (lessonResponse.status === 201) createdIds.lessons.push(lessonResponse.body.id);
+  assert.equal(responses.filter(({ status }) => status >= 200 && status < 300).length, 1);
+  assert.ok(responses.every(({ status }) => status !== 500));
+  const rejected = responses.find(({ status }) => status >= 400);
+  assert.ok(['GRADE_MISMATCH', 'GRADE_CHANGE_CONFLICT', 'RETRYABLE_CONFLICT'].includes(rejected.body.code));
+
+  const lesson = lessonResponse.status === 201
+    ? await prisma.lesson.findUnique({
+      where: { id: lessonResponse.body.id },
+      include: { participants: { include: { student: true } } },
+    })
+    : null;
+  if (lesson) {
+    assert.equal(new Set(lesson.participants.map(({ student }) => student.grade)).size, 1);
+  }
+});

@@ -218,13 +218,29 @@ async function transition(action) {
   loading.value = true;
   drawerError.value = '';
   try {
-    await api.teacher.updateLesson(lessonId, action, expectedAccountId);
+    try {
+      await api.teacher.updateLesson(lessonId, action, expectedAccountId);
+    } catch (e) {
+      if (isCurrentEpoch(epoch)) drawerError.value = `无法${action === 'complete' ? '完成' : '取消'}课程（${e.message}）。`;
+      return;
+    }
+    if (!isCurrentEpoch(epoch)) return;
+    const savedStatus = action === 'complete' ? 'completed' : 'cancelled';
+    teacher.value.lessons = teacher.value.lessons.map((lesson) => (
+      lesson.id === lessonId ? { ...lesson, status: savedStatus } : lesson
+    ));
+    selectedLesson.value = { ...selectedLesson.value, status: savedStatus };
+    try {
+      await loadTeacher(epoch, expectedAccountId);
+    } catch (e) {
+      if (isCurrentEpoch(epoch)) {
+        drawerError.value = `课程状态已保存，但课表刷新失败（${e.message}）。请关闭详情后使用“刷新”重试。`;
+      }
+      return;
+    }
     if (!isCurrentEpoch(epoch)) return;
     closeDrawer();
     notice.value = `课程已${action === 'complete' ? '完成' : '取消'}。`;
-    await loadTeacher(epoch, expectedAccountId);
-  } catch (e) {
-    if (isCurrentEpoch(epoch)) drawerError.value = `无法${action === 'complete' ? '完成' : '取消'}课程（${e.message}）。`;
   } finally {
     if (isCurrentEpoch(epoch)) loading.value = false;
   }

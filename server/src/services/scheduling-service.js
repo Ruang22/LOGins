@@ -1,4 +1,4 @@
-import { prisma } from '../db/client.js';
+import { runSerializableTransaction } from '../db/transaction-retry.js';
 
 const LESSON_DURATION_MINUTES = 60;
 const MINUTE_ISO_8601 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::00(?:\.000)?)?(Z|([+-])(\d{2}):(\d{2}))$/;
@@ -125,7 +125,7 @@ export async function createReservation({
   const startsAt = parseMinute(startAt);
   const endsAt = new Date(startsAt.getTime() + LESSON_DURATION_MINUTES * 60_000);
 
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     await lock(tx, `teacher:${teacherId}`);
     await lockStudents(tx, studentIds);
 
@@ -150,7 +150,7 @@ export async function createReservation({
       await tx.student.update({ where: { id: studentId }, data: { reservedCredits: { increment: 1 } } });
     }
     return lesson;
-  }, { isolationLevel: 'Serializable' });
+  }, () => new SchedulingError('RETRYABLE_CONFLICT'));
 }
 
 export async function editReservation({
@@ -168,7 +168,7 @@ export async function editReservation({
   const startsAt = parseMinute(startAt);
   const endsAt = new Date(startsAt.getTime() + LESSON_DURATION_MINUTES * 60_000);
 
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     await lock(tx, `lesson:${lessonId}`);
     const lesson = await tx.lesson.findUnique({
       where: { id: lessonId },
@@ -227,14 +227,14 @@ export async function editReservation({
       },
       include: { participants: true },
     });
-  }, { isolationLevel: 'Serializable' });
+  }, () => new SchedulingError('RETRYABLE_CONFLICT'));
 }
 
 export async function transitionLesson({ lessonId, action }, actor) {
   const teacherId = requireActorId(actor);
   if (!lessonId || !['complete', 'cancel'].includes(action)) throw new SchedulingError('INVALID_TRANSITION');
 
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     await lock(tx, `lesson:${lessonId}`);
     const lesson = await tx.lesson.findUnique({
       where: { id: lessonId },
@@ -265,7 +265,7 @@ export async function transitionLesson({ lessonId, action }, actor) {
       data: { status: action === 'complete' ? 'completed' : 'cancelled' },
       include: { participants: true },
     });
-  }, { isolationLevel: 'Serializable' });
+  }, () => new SchedulingError('RETRYABLE_CONFLICT'));
 }
 
 export { SchedulingError };

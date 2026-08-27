@@ -1,4 +1,5 @@
 import { prisma } from '../db/client.js';
+import { runSerializableTransaction } from '../db/transaction-retry.js';
 import { createStudentSchema, updateStudentSchema } from '../schemas/student-schema.js';
 
 const studentSelect = {
@@ -82,7 +83,7 @@ export async function updateStudent({ studentId, input }, teacher) {
   requireTeacher(teacher);
   const parsed = updateStudentSchema.parse(input);
 
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     const discoveredLessons = parsed.grade === undefined ? [] : await activeGroupLessons(tx, studentId);
     await lockStudents(tx, [
       studentId,
@@ -130,7 +131,7 @@ export async function updateStudent({ studentId, input }, teacher) {
       },
       select: studentSelect,
     });
-  }, { isolationLevel: 'Serializable' });
+  }, () => new StudentError('RETRYABLE_CONFLICT'));
 }
 
 export async function archiveStudent({ studentId }, teacher) {

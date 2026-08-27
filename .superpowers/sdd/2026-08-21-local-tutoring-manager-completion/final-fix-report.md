@@ -62,3 +62,32 @@
 - 业务时区现固定为 `Asia/Shanghai`。若产品未来支持多地区，需要把时区升级为明确的租户配置，而不是恢复设备本地时区。
 - 支付路径仍只是演示模拟，不接真实支付；AI 无配置时继续真实失败，不提供伪成功响应。
 - 测试输出仅保留非阻塞警告：Prisma `package.json#prisma` 配置将在 Prisma 7 弃用，以及 Playwright WebServer 的 `NO_COLOR` / `FORCE_COLOR` 提示。
+
+## 最终复审追加修复（2026-08-27）
+
+本节记录最终修复提交后的唯一一次复审波，并以此处结果取代上方原始验证计数。
+
+### Serializable 并发冲突不再泄漏
+
+- RED 复现确认根因：并发事务在等待 transaction-scoped advisory lock 时已建立 Serializable 快照；获锁后的旧快照写入被 PostgreSQL 中止，Prisma 以 `P2034` 抛出。此前服务未重试或翻译，真实路由因此返回 500。
+- 新增共享事务边界：订单创建/确认、排课创建/编辑/状态转换、学生年级更新均对 `P2034` 最多执行 3 次完整 Serializable 事务重试。
+- 若连续 3 次仍冲突，服务抛出受控 `RETRYABLE_CONFLICT`，订单、排课和学生路由统一返回 HTTP 409；原始 Prisma 错误只保留为内部 `cause`，不会成为 API 响应。
+- 同一 simulation 或 manual QR 订单并发确认时，数据库只入账一次；另一请求在重试后的新快照中返回 `ORDER_ALREADY_PAID`，不会重复增加课时。
+- 真实 PostgreSQL 并发测试覆盖服务和路由：订单确认的 200/400 结果、重试耗尽的 409 映射、年级变更与组合排课竞争。后者只允许一方成功，失败方返回 `GRADE_MISMATCH`、`GRADE_CHANGE_CONFLICT` 或受控 `RETRYABLE_CONFLICT`；持久化数据始终不存在跨年级 scheduled 组合课。
+
+### 课程状态写入与刷新分阶段处理
+
+- RED 复现确认：课程状态写入成功后，代码先关闭抽屉并发布成功通知，再执行 `loadTeacher`；刷新失败落入 catch 后只写已卸载的 `drawerError`，用户只能看到误导成功。
+- transition 现分为明确的写入阶段和刷新阶段。写入失败仍在抽屉内保留原动作供重试；写入成功后立即把该课程的本地合法状态更新为 completed/cancelled，并隐藏不再合法的动作。
+- 只有刷新成功才关闭抽屉并发布成功通知。刷新失败时抽屉保持可见，以 `role="alert"` 说明“状态已保存但课表刷新失败”，显示已完成/已取消状态，并提示关闭详情后使用“刷新”恢复；不会发布误导成功。
+
+### 追加验证
+
+| 命令 | 最终结果 |
+|---|---|
+| `npm.cmd --workspace client test` | 通过：11 files，60 tests |
+| `npm.cmd --workspace client run build` | 通过：Vite build，22 modules transformed |
+| `npm.cmd run test:server` | 通过：72 tests；真实 PostgreSQL `schedule_assistant_test` |
+| `npm.cmd run test:e2e` | 通过：Chromium 20 tests；真实 PostgreSQL E2E 数据库 |
+
+并发重试是有限的，不会无限占用请求；极端持续争用会显式返回可重试的 409。支付仍完全为模拟流程，AI 无配置时仍走真实失败路径。

@@ -7,6 +7,7 @@ import {
   createStudent,
   updateStudent,
 } from '../src/services/student-service.js';
+import { createReservation } from '../src/services/scheduling-service.js';
 
 const prisma = new PrismaClient();
 const createdIds = { users: [], students: [], lessons: [], orders: [] };
@@ -247,4 +248,47 @@ test('grade changes cannot split an active group lesson and roll back every acco
   await prisma.lesson.update({ where: { id: lesson.id }, data: { status: 'completed' } });
   const updated = await updateStudent({ studentId: student.id, input: { grade: student.grade + 1 } }, teacher);
   assert.equal(updated.grade, student.grade + 1);
+});
+
+test('concurrent grade change and group scheduling never leak P2034 or persist a mixed-grade lesson', async () => {
+  const { parent, student } = await createExistingStudent({ attendedCredits: 0, reservedCredits: 0, totalCredits: 4 });
+  const suffix = uniqueSuffix();
+  const peer = await prisma.student.create({
+    data: {
+      parentId: parent.id,
+      name: `Concurrent Grade Peer ${suffix}`,
+      grade: student.grade,
+      totalCredits: 4,
+    },
+  });
+  createdIds.students.push(peer.id);
+
+  const outcomes = await Promise.allSettled([
+    createReservation({
+      studentIds: [student.id, peer.id],
+      startAt: '2035-06-03T10:05:00.000Z',
+    }, teacher),
+    updateStudent({ studentId: student.id, input: { grade: student.grade + 1 } }, teacher),
+  ]);
+  const fulfilled = outcomes.filter(({ status }) => status === 'fulfilled');
+  const rejected = outcomes.filter(({ status }) => status === 'rejected');
+  const lessonResult = outcomes[0];
+  if (lessonResult.status === 'fulfilled') createdIds.lessons.push(lessonResult.value.id);
+
+  assert.equal(fulfilled.length, 1);
+  assert.equal(rejected.length, 1);
+  assert.notEqual(rejected[0].reason.code, 'P2034');
+  assert.ok(['GRADE_CHANGE_CONFLICT', 'GRADE_MISMATCH', 'RETRYABLE_CONFLICT'].includes(rejected[0].reason.code));
+
+  const scheduledLesson = await prisma.lesson.findFirst({
+    where: {
+      teacherId: teacher.id,
+      startsAt: new Date('2035-06-03T10:05:00.000Z'),
+      status: 'scheduled',
+    },
+    include: { participants: { include: { student: true } } },
+  });
+  if (scheduledLesson) {
+    assert.equal(new Set(scheduledLesson.participants.map(({ student: participant }) => participant.grade)).size, 1);
+  }
 });

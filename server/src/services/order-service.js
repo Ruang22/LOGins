@@ -1,4 +1,5 @@
 import { prisma } from '../db/client.js';
+import { runSerializableTransaction } from '../db/transaction-retry.js';
 import { getPackage } from '../catalog/package-catalog.js';
 import { teacherManualOrderSchema } from '../schemas/order-schema.js';
 
@@ -78,11 +79,11 @@ export async function createOrder(input, parent) {
   if (actor.role !== 'parent') throw new OrderError('FORBIDDEN');
   const orderInput = validateOrderInput(input);
 
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     await lockStudent(tx, orderInput.studentId);
     await requireVisibleActiveStudent(tx, { studentId: orderInput.studentId, parentId: actor.id });
     return tx.order.create({ data: { ...orderInput, parentId: actor.id, paymentMode: 'simulation' } });
-  }, { isolationLevel: 'Serializable' });
+  }, () => new OrderError('RETRYABLE_CONFLICT'));
 }
 
 export async function confirmSimulationOrder(orderId, actorInput) {
@@ -90,13 +91,14 @@ export async function confirmSimulationOrder(orderId, actorInput) {
   if (typeof orderId !== 'string' || !orderId) throw new OrderError('ORDER_NOT_FOUND');
   if (actor.role !== 'parent') throw new OrderError('FORBIDDEN');
 
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     await lock(tx, `order:${orderId}`);
     const order = await tx.order.findUnique({ where: { id: orderId } });
     if (!order) throw new OrderError('ORDER_NOT_FOUND');
     if (order.parentId !== actor.id) throw new OrderError('FORBIDDEN');
     await lockStudent(tx, order.studentId);
     await requireVisibleActiveStudent(tx, { studentId: order.studentId, parentId: actor.id });
+    if (order.status === 'paid') throw new OrderError('ORDER_ALREADY_PAID');
     if (order.status !== 'pending') throw new OrderError('ORDER_NOT_PENDING');
 
     if (order.paymentMode !== 'simulation') throw new OrderError('INVALID_PAYMENT_MODE');
@@ -111,7 +113,7 @@ export async function confirmSimulationOrder(orderId, actorInput) {
       data: { totalCredits: { increment: packageOption.creditQuantity } },
     });
     return paidOrder;
-  }, { isolationLevel: 'Serializable' });
+  }, () => new OrderError('RETRYABLE_CONFLICT'));
 }
 
 export async function createTeacherManualOrder(input, teacherInput) {
@@ -145,7 +147,7 @@ export async function confirmTeacherManualOrder({ orderId } = {}, teacherInput) 
   if (teacher.role !== 'teacher') throw new OrderError('FORBIDDEN');
   if (typeof orderId !== 'string' || !orderId) throw new OrderError('ORDER_NOT_FOUND');
 
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     await lock(tx, `order:${orderId}`);
     const order = await tx.order.findUnique({ where: { id: orderId } });
     if (!order) throw new OrderError('ORDER_NOT_FOUND');
@@ -174,7 +176,7 @@ export async function confirmTeacherManualOrder({ orderId } = {}, teacherInput) 
       data: { totalCredits: { increment: order.creditQuantity } },
     });
     return paidOrder;
-  }, { isolationLevel: 'Serializable' });
+  }, () => new OrderError('RETRYABLE_CONFLICT'));
 }
 
 export { OrderError };

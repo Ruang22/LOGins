@@ -569,4 +569,36 @@ describe('App', () => {
     expect(updateLesson).toHaveBeenCalledTimes(2);
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
   });
+
+  it('课程状态写入成功但课表刷新失败时保留可见恢复状态且不发布成功通知', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2032-03-01T12:00:00.000Z'));
+    const lesson = {
+      id: 'lesson-refresh-failure',
+      startsAt: '2032-03-01T10:05:00.000Z',
+      durationMinutes: 60,
+      status: 'scheduled',
+      participants: [{ student: { name: '林一', grade: 8 } }],
+    };
+    vi.spyOn(api.teacher, 'schedule')
+      .mockResolvedValueOnce([lesson])
+      .mockRejectedValueOnce(new Error('REFRESH_FAILED'));
+    vi.spyOn(api.teacher, 'students').mockResolvedValue([managedStudent]);
+    vi.spyOn(api.teacher, 'orders').mockResolvedValue([]);
+    vi.spyOn(api.teacher, 'updateLesson').mockResolvedValue({ ...lesson, status: 'completed' });
+    const wrapper = mount(App, { global: { stubs: { RoleGate: false } } });
+
+    await chooseRole(wrapper, 'teacher');
+    await wrapper.get('[data-testid="schedule-row"]').trigger('click');
+    await wrapper.get('[role="dialog"]').findAll('button')
+      .find((button) => button.text() === '标记为已完成')
+      .trigger('click');
+    await flushPromises();
+
+    const drawer = wrapper.get('[role="dialog"]');
+    expect(drawer.get('[role="alert"]').text()).toContain('REFRESH_FAILED');
+    expect(drawer.text()).toContain('已完成');
+    expect(drawer.findAll('button').some((button) => button.text() === '标记为已完成')).toBe(false);
+    expect(wrapper.find('[data-testid="teacher-shell"] [role="status"]').exists()).toBe(false);
+  });
 });

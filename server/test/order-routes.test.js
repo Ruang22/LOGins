@@ -5,6 +5,7 @@ import request from 'supertest';
 import './support/test-database.js';
 import { seedDatabase } from '../prisma/seed.js';
 import { createApp } from '../src/app.js';
+import { prisma as servicePrisma } from '../src/db/client.js';
 
 const prisma = new PrismaClient();
 const createdOrderIds = [];
@@ -98,6 +99,68 @@ test('teacher creates and confirms a manual QR order only once', async () => {
     .patch(`/api/teacher/orders/${created.body.id}/confirm-manual`)
     .set('x-demo-user', 'teacher-demo')
     .expect(400, { code: 'ORDER_ALREADY_PAID' });
+});
+
+test('concurrent manual confirmation routes return one success and one controlled conflict, never 500', async (t) => {
+  await seedDatabase(prisma);
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const parent = await prisma.user.create({
+    data: { name: `Concurrent Parent ${suffix}`, email: `concurrent-parent-${suffix}@example.test`, role: 'parent' },
+  });
+  const student = await prisma.student.create({
+    data: { parentId: parent.id, name: `Concurrent Student ${suffix}`, grade: 8, totalCredits: 2 },
+  });
+  const app = createApp();
+  const created = await request(app)
+    .post('/api/teacher/orders/manual')
+    .set('x-demo-user', 'teacher-demo')
+    .send({
+      studentId: student.id,
+      packageName: '并发确认课程包',
+      creditQuantity: 4,
+      amountCents: 120000,
+      paymentMode: 'manual_qr',
+    })
+    .expect(201);
+  t.after(async () => {
+    await prisma.order.deleteMany({ where: { studentId: student.id } });
+    await prisma.student.delete({ where: { id: student.id } });
+    await prisma.user.delete({ where: { id: parent.id } });
+  });
+
+  const responses = await Promise.all([
+    request(app).patch(`/api/teacher/orders/${created.body.id}/confirm-manual`).set('x-demo-user', 'teacher-demo'),
+    request(app).patch(`/api/teacher/orders/${created.body.id}/confirm-manual`).set('x-demo-user', 'teacher-demo'),
+  ]);
+
+  assert.deepEqual(responses.map(({ status }) => status).sort((a, b) => a - b), [200, 400]);
+  assert.equal(responses.find(({ status }) => status === 400).body.code, 'ORDER_ALREADY_PAID');
+  assert.equal((await prisma.student.findUniqueOrThrow({ where: { id: student.id } })).totalCredits, 6);
+});
+
+test('exhausted serialization conflicts map to a retryable 409 response instead of Prisma P2034', async () => {
+  await seedDatabase(prisma);
+  const student = await prisma.student.findFirstOrThrow({
+    where: { parent: { email: 'jordan.rivera.demo.parent@example.test' }, isActive: true },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  });
+  const originalTransaction = servicePrisma.$transaction;
+  let attempts = 0;
+  servicePrisma.$transaction = async () => {
+    attempts += 1;
+    throw Object.assign(new Error('synthetic serialization conflict'), { code: 'P2034' });
+  };
+
+  try {
+    await request(createApp())
+      .post('/api/parent/orders')
+      .set('x-demo-user', 'parent-demo')
+      .send({ studentId: student.id, packageId: 'demo-10' })
+      .expect(409, { code: 'RETRYABLE_CONFLICT' });
+    assert.equal(attempts, 3);
+  } finally {
+    servicePrisma.$transaction = originalTransaction;
+  }
 });
 
 test('teacher manual order route uses catalog facts and rejects parent access', async () => {

@@ -11,7 +11,13 @@ import {
 
 function respondToOrderError(error, res) {
   if (!(error instanceof OrderError)) return false;
-  const status = error.code === 'FORBIDDEN' ? 403 : error.code === 'STUDENT_NOT_FOUND' || error.code === 'ORDER_NOT_FOUND' ? 404 : 400;
+  const status = error.code === 'FORBIDDEN'
+    ? 403
+    : error.code === 'STUDENT_NOT_FOUND' || error.code === 'ORDER_NOT_FOUND'
+      ? 404
+      : error.code === 'RETRYABLE_CONFLICT'
+        ? 409
+        : 400;
   res.status(status).json({ code: error.code });
   return true;
 }

@@ -8,6 +8,7 @@ import {
   createTeacherManualOrder,
   createOrder,
 } from '../src/services/order-service.js';
+import { prisma as servicePrisma } from '../src/db/client.js';
 
 const prisma = new PrismaClient();
 const createdIds = { users: [], students: [], orders: [] };
@@ -66,7 +67,7 @@ test('a simulation order adds credits only once', async () => {
 
   await assert.rejects(
     confirmSimulationOrder(order.id, parent),
-    (error) => error.code === 'ORDER_NOT_PENDING',
+    (error) => error.code === 'ORDER_ALREADY_PAID',
   );
   assert.equal((await prisma.student.findUniqueOrThrow({ where: { id: student.id } })).totalCredits, 12);
 });
@@ -132,6 +133,26 @@ test('a legacy pending order credits its catalog quantity instead of its persist
 
   await confirmSimulationOrder(legacyOrder.id, parent);
 
+  assert.equal((await prisma.student.findUniqueOrThrow({ where: { id: student.id } })).totalCredits, 12);
+});
+
+test('concurrent simulation confirmation returns one paid order and one controlled already-paid error', async () => {
+  const { parent, student } = await createFixture();
+  const order = await createOrder({ studentId: student.id, packageId: 'demo-10' }, parent);
+  createdIds.orders.push(order.id);
+
+  const outcomes = await Promise.allSettled([
+    confirmSimulationOrder(order.id, parent),
+    confirmSimulationOrder(order.id, parent),
+  ]);
+  const fulfilled = outcomes.filter(({ status }) => status === 'fulfilled');
+  const rejected = outcomes.filter(({ status }) => status === 'rejected');
+
+  assert.equal(fulfilled.length, 1);
+  assert.equal(fulfilled[0].value.status, 'paid');
+  assert.equal(rejected.length, 1);
+  assert.equal(rejected[0].reason.code, 'ORDER_ALREADY_PAID');
+  assert.notEqual(rejected[0].reason.code, 'P2034');
   assert.equal((await prisma.student.findUniqueOrThrow({ where: { id: student.id } })).totalCredits, 12);
 });
 
@@ -297,4 +318,23 @@ test('manual-qr confirmation rechecks the locked student remains active and boun
   );
   assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: inactiveOrder.id } })).status, 'pending');
   assert.equal((await prisma.student.findUniqueOrThrow({ where: { id: student.id } })).totalCredits, 2);
+});
+
+test('exhausted serialization retries become a controlled retryable order conflict', async () => {
+  const originalTransaction = servicePrisma.$transaction;
+  let attempts = 0;
+  servicePrisma.$transaction = async () => {
+    attempts += 1;
+    throw Object.assign(new Error('synthetic serialization conflict'), { code: 'P2034' });
+  };
+
+  try {
+    await assert.rejects(
+      confirmSimulationOrder('synthetic-order', { id: 'synthetic-parent', role: 'parent' }),
+      (error) => error.code === 'RETRYABLE_CONFLICT' && error.code !== 'P2034',
+    );
+    assert.equal(attempts, 3);
+  } finally {
+    servicePrisma.$transaction = originalTransaction;
+  }
 });
