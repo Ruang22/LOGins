@@ -5,11 +5,13 @@ import { createParentRouter } from './routes/parent-routes.js';
 import { createTeacherRouter } from './routes/teacher-routes.js';
 import { createParentOrderRouter, createTeacherOrderRouter } from './routes/order-routes.js';
 import { createAiRouter } from './routes/ai-routes.js';
+import { createAccountRouter } from './routes/account-routes.js';
 
 export function createApp({ aiProvider } = {}) {
   const app = express();
   app.use(express.json());
   app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+  app.use('/api', createAccountRouter());
   app.use('/api', demoAuth);
   app.use('/api/ai', createAiRouter({ aiProvider }));
   app.use('/api/teacher', createTeacherRouter());

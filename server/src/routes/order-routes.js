@@ -1,11 +1,23 @@
 import { Router } from 'express';
 import { prisma } from '../db/client.js';
 import { requireRole } from '../middleware/demo-auth.js';
-import { confirmSimulationOrder, createOrder, OrderError } from '../services/order-service.js';
+import {
+  confirmSimulationOrder,
+  confirmTeacherManualOrder,
+  createOrder,
+  createTeacherManualOrder,
+  OrderError,
+} from '../services/order-service.js';
 
 function respondToOrderError(error, res) {
   if (!(error instanceof OrderError)) return false;
-  const status = error.code === 'FORBIDDEN' ? 403 : error.code === 'STUDENT_NOT_FOUND' || error.code === 'ORDER_NOT_FOUND' ? 404 : 400;
+  const status = error.code === 'FORBIDDEN'
+    ? 403
+    : error.code === 'STUDENT_NOT_FOUND' || error.code === 'ORDER_NOT_FOUND'
+      ? 404
+      : error.code === 'RETRYABLE_CONFLICT'
+        ? 409
+        : 400;
   res.status(status).json({ code: error.code });
   return true;
 }
@@ -47,6 +59,24 @@ export function createTeacherOrderRouter() {
       res.json(orders);
     } catch (error) {
       next(error);
+    }
+  });
+
+  router.post('/orders/manual', async (req, res, next) => {
+    try {
+      const order = await createTeacherManualOrder(req.body ?? {}, req.demoUser);
+      res.status(201).json(order);
+    } catch (error) {
+      if (!respondToOrderError(error, res)) next(error);
+    }
+  });
+
+  router.patch('/orders/:id/confirm-manual', async (req, res, next) => {
+    try {
+      const order = await confirmTeacherManualOrder({ orderId: req.params.id }, req.demoUser);
+      res.json(order);
+    } catch (error) {
+      if (!respondToOrderError(error, res)) next(error);
     }
   });
 

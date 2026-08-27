@@ -1,66 +1,161 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures.mjs';
 
-async function preview(page, description) {
-  await page.getByLabel('描述课程').fill(description);
-  await page.getByRole('button', { name: '创建 AI 预览' }).click();
-  await expect(page.getByRole('complementary', { name: 'AI 排课预览' })).toContainText('未排课草稿');
+const teacherAccount = {
+  id: 'e2e-teacher',
+  name: 'Maya Chen (Demo Teacher)',
+};
+
+async function selectTeacherWorkbench(page) {
+  const accountsResponse = page.waitForResponse((response) => (
+    response.url().includes('/api/accounts?role=teacher') && response.request().method() === 'GET'
+  ));
+  await page.getByTestId('choose-teacher').click();
+  const accounts = await (await accountsResponse).json();
+  expect(accounts).toContainEqual(expect.objectContaining(teacherAccount));
+  const accountGate = page.getByTestId('account-gate');
+  await expect(accountGate).toBeVisible();
+  await expect(page.getByRole('heading', { name: '选择教师账户' })).toBeVisible();
+  await accountGate.getByRole('button').filter({ hasText: teacherAccount.name }).click();
+  await expect(page.getByTestId('teacher-shell')).toBeVisible();
+  await expect(page.getByTestId('role-gate')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '手动排课' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '刷新' })).toBeEnabled();
 }
 
-async function previewAndConfirm(page, description) {
-  await preview(page, description);
-  await page.getByRole('button', { name: '确认预约' }).click();
-}
-
-test('teacher confirms an individual AI preview through the Express API and PostgreSQL', async ({ page }) => {
+test('unconfigured AI provider rejects a draft without creating a lesson', async ({ page }) => {
   await page.goto('/');
+  await selectTeacherWorkbench(page);
 
-  await previewAndConfirm(page, 'e2e individual lesson');
+  await page.getByRole('button', { name: 'AI 排课草稿' }).click();
+  const description = page.getByRole('textbox', { name: '课程描述' });
+  await description.fill('e2e individual lesson');
+  const responsePromise = page.waitForResponse((response) => (
+    response.url().endsWith('/api/ai/parse-schedule') && response.request().method() === 'POST'
+  ));
+  await page.getByRole('button', { name: '生成待确认草稿' }).click();
 
-  await expect(page.getByRole('status')).toHaveText('预约已确认，并已加入每周课表。');
-  await expect(page.getByRole('button', { name: /Avery Rivera/ })).toBeVisible();
-  await expect(page.getByRole('table', { name: '学生课时台账' }).getByRole('row').filter({ hasText: 'Avery Rivera (Demo Student)' })).toContainText('1');
+  const response = await responsePromise;
+  expect(response.status()).toBe(503);
+  await expect(response.json()).resolves.toEqual({ code: 'AI_PROVIDER_UNAVAILABLE' });
+  await expect(page.getByRole('alert')).toContainText('AI 预览暂不可用（AI_PROVIDER_UNAVAILABLE）');
+  await expect(description).toHaveValue('e2e individual lesson');
+  await expect(page.getByRole('button', { name: '确认预约' })).toHaveCount(0);
+
+  const schedule = await page.request.get('/api/teacher/schedule', {
+    headers: { 'x-demo-user': teacherAccount.id },
+  });
+  expect(schedule.ok()).toBeTruthy();
+  expect(await schedule.json()).toHaveLength(0);
 });
 
-test('teacher confirms a same-grade group lesson through the backend validation path', async ({ page }) => {
+async function openManualSchedule(page) {
+  await page.getByRole('button', { name: '手动排课' }).click();
+  const dialog = page.getByRole('dialog', { name: '手动排课' });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+async function fillManualLesson(dialog, {
+  studentIds = ['e2e-avery'],
+  date = '2032-03-01',
+  time = '18:05',
+  note = '一分钟精度的英语课',
+} = {}) {
+  for (const studentId of studentIds) await dialog.getByTestId(`student-${studentId}`).check();
+  await dialog.getByLabel('日期', { exact: true }).fill(date);
+  await dialog.getByLabel('开始时间', { exact: true }).fill(time);
+  await dialog.getByLabel('课程备注', { exact: true }).fill(note);
+}
+
+async function saveManualLesson(page, options) {
+  const dialog = await openManualSchedule(page);
+  await fillManualLesson(dialog, options);
+  const responsePromise = page.waitForResponse((response) => (
+    response.url().endsWith('/api/teacher/lessons') && response.request().method() === 'POST'
+  ));
+  await dialog.getByRole('button', { name: '保存课程' }).click();
+  return responsePromise;
+}
+
+test('teacher schedules a minute-precise one-hour lesson at 18:05 through Express and PostgreSQL', async ({ page }) => {
   await page.goto('/');
+  await selectTeacherWorkbench(page);
 
-  await previewAndConfirm(page, 'e2e same-grade group lesson');
+  const response = await saveManualLesson(page);
+  expect(response.status()).toBe(201);
+  const lesson = await response.json();
+  expect(lesson).toEqual(expect.objectContaining({
+    startsAt: '2032-03-01T10:05:00.000Z',
+    durationMinutes: 60,
+    note: '一分钟精度的英语课',
+  }));
 
-  await expect(page.getByRole('status')).toHaveText('预约已确认，并已加入每周课表。');
-  await expect(page.getByRole('button', { name: /Avery Rivera.*Rowan Rivera/ })).toBeVisible();
-  await expect(page.getByRole('table', { name: '学生课时台账' }).getByRole('row').filter({ hasText: 'Rowan Rivera (Demo Student)' })).toContainText('1');
+  await expect(page.getByRole('status')).toHaveText('手动排课已保存。');
+  const row = page.getByTestId('schedule-row').filter({ hasText: 'Avery Rivera (Demo Student)' });
+  await expect(row.getByTestId('schedule-time')).toHaveText('18:05');
+  await expect(row).toContainText('60 分钟');
+  await expect(row).toContainText('已排课');
+});
+
+test('teacher schedules a same-grade group through the backend validation path', async ({ page }) => {
+  await page.goto('/');
+  await selectTeacherWorkbench(page);
+
+  const response = await saveManualLesson(page, {
+    studentIds: ['e2e-avery', 'e2e-rowan'],
+    date: '2032-03-02',
+    note: '八年级同组课',
+  });
+  expect(response.status()).toBe(201);
+  await expect(page.getByRole('status')).toHaveText('手动排课已保存。');
+  await expect(page.getByTestId('schedule-row')).toContainText('Avery Rivera (Demo Student)、Rowan Rivera (Demo Student)');
 });
 
 test('teacher receives the real TIME_CONFLICT rejection without adding a second lesson', async ({ page }) => {
   await page.goto('/');
+  await selectTeacherWorkbench(page);
 
-  await previewAndConfirm(page, 'e2e conflict baseline lesson');
-  await expect(page.getByRole('status')).toHaveText('预约已确认，并已加入每周课表。');
+  expect((await saveManualLesson(page)).status()).toBe(201);
+  const conflictDialog = await openManualSchedule(page);
+  await fillManualLesson(conflictDialog, { note: '冲突课程' });
+  await conflictDialog.getByRole('button', { name: '保存课程' }).click();
 
-  await previewAndConfirm(page, 'e2e conflicting lesson');
-
-  await expect(page.getByRole('alert')).toContainText('预约未保存（TIME_CONFLICT）');
-  const schedule = await page.request.get('/api/teacher/schedule', { headers: { 'x-demo-user': 'teacher-demo' } });
+  await expect(page.getByRole('alert')).toContainText('无法保存课程（TIME_CONFLICT）');
+  const schedule = await page.request.get('/api/teacher/schedule', {
+    headers: { 'x-demo-user': teacherAccount.id },
+  });
   expect(schedule.ok()).toBeTruthy();
-  const conflictSlot = (await schedule.json()).filter(({ startsAt }) => startsAt === '2032-01-07T10:00:00.000Z');
+  const conflictSlot = (await schedule.json()).filter(({ startsAt }) => startsAt === '2032-03-01T10:05:00.000Z');
   expect(conflictSlot).toHaveLength(1);
 });
 
 test('teacher receives the real NO_CREDITS rejection without adding a lesson', async ({ page }) => {
   await page.goto('/');
+  await selectTeacherWorkbench(page);
 
-  await previewAndConfirm(page, 'e2e zero credit lesson');
+  const dialog = await openManualSchedule(page);
+  await fillManualLesson(dialog, {
+    studentIds: ['e2e-zero-credit'],
+    date: '2032-03-03',
+    note: '零课时课程',
+  });
+  await dialog.getByRole('button', { name: '保存课程' }).click();
 
-  await expect(page.getByRole('alert')).toContainText('预约未保存（NO_CREDITS）');
-  await expect(page.getByRole('button', { name: /Zero Credit/ })).toHaveCount(0);
+  await expect(page.getByRole('alert')).toContainText('无法保存课程（NO_CREDITS）');
+  const schedule = await page.request.get('/api/teacher/schedule', {
+    headers: { 'x-demo-user': teacherAccount.id },
+  });
+  expect(schedule.ok()).toBeTruthy();
+  expect(await schedule.json()).toHaveLength(0);
 });
 
 test('keyboard users stay in the lesson dialog and return to its trigger after closing it', async ({ page }) => {
   await page.goto('/');
-  await previewAndConfirm(page, 'e2e completion lesson');
+  await selectTeacherWorkbench(page);
+  expect((await saveManualLesson(page, { date: '2032-03-04', note: '键盘验收课程' })).status()).toBe(201);
 
-  const trigger = page.getByRole('button', { name: /Avery Rivera/ }).last();
+  const trigger = page.getByTestId('schedule-row').filter({ hasText: 'Avery Rivera (Demo Student)' });
   await trigger.focus();
   await page.keyboard.press('Enter');
 
@@ -81,4 +176,28 @@ test('keyboard users stay in the lesson dialog and return to its trigger after c
   await trigger.click();
   await dialog.getByRole('button', { name: '标记为已完成' }).click();
   await expect(page.getByRole('status')).toHaveText('课程已完成。');
+});
+
+test('teacher workbench captures desktop and mobile views without horizontal overflow', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/');
+  await selectTeacherWorkbench(page);
+  expect((await saveManualLesson(page)).status()).toBe(201);
+
+  for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: 'mobile', width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await page.screenshot({ path: testInfo.outputPath(`teacher-${viewport.name}.png`), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+
+    if (viewport.name === 'mobile') {
+      const touchTargetHeights = await page.getByTestId('teacher-shell').getByRole('button').evaluateAll((buttons) => (
+        buttons.map((button) => button.getBoundingClientRect().height)
+      ));
+      expect(touchTargetHeights.every((height) => height >= 44)).toBeTruthy();
+
+      const manualSchedule = page.getByRole('button', { name: '手动排课' });
+      await manualSchedule.focus();
+      await expect(manualSchedule).toHaveCSS('outline-width', '3px');
+    }
+  }
 });

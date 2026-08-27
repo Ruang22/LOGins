@@ -17,42 +17,78 @@ test('teacher workspace exposes labeled landmarks, a visible focus indicator, an
   await page.goto('/');
 
   await expect(page).toHaveTitle('AI 排课助手');
-  await expect(page.getByRole('heading', { name: '每周授课节奏' })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: '工作区' })).toBeVisible();
-  await expect(page.getByRole('region', { name: '每周课程表' })).toBeVisible();
-  await expect(page.getByLabel('描述课程')).toBeVisible();
+  await expect(page.getByTestId('role-gate')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '请选择您的身份' })).toBeVisible();
+  await page.getByTestId('choose-teacher').click();
 
-  const parentDashboard = page.getByRole('button', { name: '家长中心' });
+  const accountGate = page.getByTestId('account-gate');
+  await expect(accountGate).toBeVisible();
+  await expect(page.getByRole('heading', { name: '选择教师账户' })).toBeVisible();
+  await accountGate.getByRole('button').filter({ hasText: 'Maya Chen (Demo Teacher)' }).click();
+
+  await expect(page.getByTestId('teacher-shell')).toBeVisible();
+  await expect(page.getByTestId('role-gate')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '今天，按分钟上课' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '教师工作区' })).toBeVisible();
+  await expect(page.getByRole('region', { name: /课程$/ })).toBeVisible();
+
+  await expect(page.getByTestId('workbench-destination')).toBeFocused();
+  const aiSchedule = page.getByRole('button', { name: 'AI 排课草稿' });
+  await aiSchedule.focus();
+  await page.keyboard.press('Shift+Tab');
   await page.keyboard.press('Tab');
-  await page.keyboard.press('Tab');
-  await page.keyboard.press('Tab');
-  await expect(parentDashboard).toBeFocused();
-  const focus = await parentDashboard.evaluate((element) => {
+  await expect(aiSchedule).toBeFocused();
+  const focus = await aiSchedule.evaluate((element) => {
     const styles = getComputedStyle(element);
     return { color: styles.outlineColor, style: styles.outlineStyle, width: styles.outlineWidth };
   });
   expect(focus.style).toBe('solid');
   expect(focus.width).toBe('3px');
-  expect(focus.color).toBe('rgb(45, 108, 223)');
+  expect(focus.color).toBe('rgb(230, 166, 60)');
 
-  const contrast = await page.getByRole('button', { name: '教师工作台' }).evaluate((element) => {
+  const contrast = await page.getByRole('button', { name: '手动排课' }).evaluate((element) => {
     const styles = getComputedStyle(element);
     return { foreground: styles.color, background: styles.backgroundColor };
   });
   const foregroundLuminance = luminance(parseRgb(contrast.foreground));
   const backgroundLuminance = luminance(parseRgb(contrast.background));
   expect((Math.max(foregroundLuminance, backgroundLuminance) + 0.05) / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05)).toBeGreaterThanOrEqual(4.5);
+
+  await aiSchedule.click();
+  await expect(page.getByRole('textbox', { name: '课程描述' })).toBeVisible();
 });
 
 test.describe('mobile release checks', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test('parent workspace remains usable without document-level horizontal scrolling on a mobile viewport', async ({ page }) => {
+  test('parent account selection and workspace remain usable on a mobile viewport', async ({ page }, testInfo) => {
     await page.goto('/');
-    await page.getByRole('button', { name: '家长中心' }).click();
+    await expect(page.getByTestId('role-gate')).toBeVisible();
 
-    await expect(page.getByRole('heading', { name: '家庭课程中心' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: '添加课程套餐' })).toBeVisible();
-    expect(await page.locator('body').evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+    const accountsResponse = page.waitForResponse((response) => (
+      response.url().includes('/api/accounts?role=parent') && response.request().method() === 'GET'
+    ));
+    await page.getByTestId('choose-parent').click();
+    const accounts = await (await accountsResponse).json();
+    expect(accounts).toContainEqual(expect.objectContaining({ id: 'e2e-parent-demo', role: 'parent' }));
+
+    const accountGate = page.getByTestId('account-gate');
+    await expect(accountGate).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+    const accountTargetHeights = await accountGate.getByRole('button').evaluateAll((buttons) => (
+      buttons.map((button) => button.getBoundingClientRect().height)
+    ));
+    expect(accountTargetHeights.every((height) => height >= 44)).toBeTruthy();
+    await accountGate.getByRole('button').filter({ hasText: 'Jordan Rivera (Demo Parent)' }).click();
+
+    await expect(page.getByTestId('parent-shell')).toBeVisible();
+    await expect(page.getByTestId('role-gate')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: /课程轨迹$/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '添加课时' })).toBeVisible();
+    await expect(page.getByTestId('simulated-qr-registration')).toContainText('扫码登记（模拟）');
+    await expect(page.getByText('模拟支付 · 演示数据')).toBeVisible();
+    await expect(page.getByText('确认收款')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+    await page.screenshot({ path: testInfo.outputPath('release-parent-mobile.png'), fullPage: true });
   });
 });

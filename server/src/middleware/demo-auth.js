@@ -6,11 +6,15 @@ const demoAccounts = {
 };
 
 export async function demoAuth(req, res, next) {
-  const account = demoAccounts[req.get('x-demo-user')];
-  if (!account) return res.status(401).json({ code: 'UNAUTHORIZED' });
-
-  const user = await prisma.user.findUnique({ where: { email: account.email } });
-  if (!user || user.role !== account.role) return res.status(401).json({ code: 'UNAUTHORIZED' });
+  const accountId = req.get('x-demo-user');
+  if (!accountId) return res.status(401).json({ code: 'UNAUTHORIZED' });
+  const alias = demoAccounts[accountId];
+  const user = await prisma.user.findUnique({
+    where: alias ? { email: alias.email } : { id: accountId },
+  });
+  if (!user || (alias && user.role !== alias.role)) {
+    return res.status(401).json({ code: 'UNAUTHORIZED' });
+  }
 
   req.demoUser = user;
   return next();

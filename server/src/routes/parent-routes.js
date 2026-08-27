@@ -27,16 +27,35 @@ export function createParentRouter() {
   router.get('/dashboard', async (req, res, next) => {
     try {
       const students = await prisma.student.findMany({
-        where: { parentId: req.demoUser.id },
-        orderBy: [{ grade: 'asc' }, { name: 'asc' }],
+        where: { parentId: req.demoUser.id, isActive: true },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        take: 1,
         include: lessonInclude,
       });
+      const activeStudent = students[0];
+      const orders = activeStudent
+        ? await prisma.order.findMany({
+          where: { parentId: req.demoUser.id, studentId: activeStudent.id },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            packageName: true,
+            creditQuantity: true,
+            amountCents: true,
+            paymentMode: true,
+            status: true,
+            createdAt: true,
+            paidAt: true,
+          },
+        })
+        : [];
       res.json({
         parent: { id: req.demoUser.id, name: req.demoUser.name, email: req.demoUser.email },
         students: students.map(({ lessonLinks, ...student }) => ({
           ...student,
           lessons: lessonLinks.map(({ lesson }) => lesson),
         })),
+        orders,
         packages: listPackages(),
       });
     } catch (error) {

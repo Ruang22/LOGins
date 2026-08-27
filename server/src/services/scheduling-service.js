@@ -1,4 +1,4 @@
-import { prisma } from '../db/client.js';
+import { runSerializableTransaction } from '../db/transaction-retry.js';
 
 const LESSON_DURATION_MINUTES = 60;
 const MINUTE_ISO_8601 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::00(?:\.000)?)?(Z|([+-])(\d{2}):(\d{2}))$/;
@@ -14,6 +14,16 @@ class SchedulingError extends Error {
 function requireActorId(actor) {
   if (!actor?.id) throw new SchedulingError('UNAUTHORIZED');
   return actor.id;
+}
+
+function validateDuration(durationMinutes = LESSON_DURATION_MINUTES) {
+  if (durationMinutes !== LESSON_DURATION_MINUTES) throw new SchedulingError('INVALID_DURATION');
+  return durationMinutes;
+}
+
+function validateNote(note = '') {
+  if (typeof note !== 'string') throw new SchedulingError('INVALID_RESERVATION');
+  return note.trim() || null;
 }
 
 function parseMinute(startAt) {
@@ -71,39 +81,66 @@ async function lockStudents(tx, studentIds) {
   }
 }
 
-export async function createReservation({ studentIds, startAt }, actor) {
+function ensureSchedulableStudents(students, studentIds, existingStudentIds = new Set()) {
+  if (students.length !== studentIds.length) throw new SchedulingError('STUDENT_NOT_FOUND');
+  if (students.some(({ isActive }) => !isActive)) throw new SchedulingError('STUDENT_INACTIVE');
+  if (new Set(students.map(({ grade }) => grade)).size !== 1) throw new SchedulingError('GRADE_MISMATCH');
+  if (students.some((student) => {
+    if (existingStudentIds.has(student.id)) return student.reservedCredits < 1;
+    return student.totalCredits - student.attendedCredits - student.reservedCredits <= 0;
+  })) {
+    throw new SchedulingError('NO_CREDITS');
+  }
+}
+
+async function hasTimeConflict(tx, { teacherId, studentIds, startsAt, endsAt, excludeLessonId }) {
+  const scheduledLessons = await tx.lesson.findMany({
+    where: {
+      status: 'scheduled',
+      ...(excludeLessonId && { id: { not: excludeLessonId } }),
+      OR: [
+        { teacherId },
+        { participants: { some: { studentId: { in: studentIds } } } },
+      ],
+    },
+    select: { startsAt: true, durationMinutes: true },
+  });
+  return scheduledLessons.some((lesson) => {
+    const lessonStart = lesson.startsAt.getTime();
+    const lessonEnd = lessonStart + lesson.durationMinutes * 60_000;
+    return lessonStart < endsAt.getTime() && lessonEnd > startsAt.getTime();
+  });
+}
+
+export async function createReservation({
+  studentIds,
+  startAt,
+  durationMinutes = LESSON_DURATION_MINUTES,
+  note = '',
+}, actor) {
   validateStudentIds(studentIds);
+  validateDuration(durationMinutes);
+  const normalizedNote = validateNote(note);
   const teacherId = requireActorId(actor);
   const startsAt = parseMinute(startAt);
   const endsAt = new Date(startsAt.getTime() + LESSON_DURATION_MINUTES * 60_000);
 
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     await lock(tx, `teacher:${teacherId}`);
     await lockStudents(tx, studentIds);
 
     const students = await tx.student.findMany({ where: { id: { in: studentIds } } });
-    if (students.length !== studentIds.length) throw new SchedulingError('STUDENT_NOT_FOUND');
-    if (new Set(students.map(({ grade }) => grade)).size !== 1) throw new SchedulingError('GRADE_MISMATCH');
-    if (students.some((student) => student.totalCredits - student.attendedCredits - student.reservedCredits <= 0)) {
-      throw new SchedulingError('NO_CREDITS');
+    ensureSchedulableStudents(students, studentIds);
+    if (await hasTimeConflict(tx, { teacherId, studentIds, startsAt, endsAt })) {
+      throw new SchedulingError('TIME_CONFLICT');
     }
-
-    const scheduledLessons = await tx.lesson.findMany({
-      where: { teacherId, status: 'scheduled' },
-      select: { startsAt: true, durationMinutes: true },
-    });
-    const hasConflict = scheduledLessons.some((lesson) => {
-      const lessonStart = lesson.startsAt.getTime();
-      const lessonEnd = lessonStart + lesson.durationMinutes * 60_000;
-      return lessonStart < endsAt.getTime() && lessonEnd > startsAt.getTime();
-    });
-    if (hasConflict) throw new SchedulingError('TIME_CONFLICT');
 
     const lesson = await tx.lesson.create({
       data: {
         teacherId,
         startsAt,
         durationMinutes: LESSON_DURATION_MINUTES,
+        note: normalizedNote,
         participants: { create: studentIds.map((studentId) => ({ studentId })) },
       },
       include: { participants: true },
@@ -113,14 +150,91 @@ export async function createReservation({ studentIds, startAt }, actor) {
       await tx.student.update({ where: { id: studentId }, data: { reservedCredits: { increment: 1 } } });
     }
     return lesson;
-  }, { isolationLevel: 'Serializable' });
+  }, () => new SchedulingError('RETRYABLE_CONFLICT'));
+}
+
+export async function editReservation({
+  lessonId,
+  studentIds,
+  startAt,
+  durationMinutes = LESSON_DURATION_MINUTES,
+  note = '',
+}, actor) {
+  if (!lessonId) throw new SchedulingError('INVALID_RESERVATION');
+  validateStudentIds(studentIds);
+  validateDuration(durationMinutes);
+  const normalizedNote = validateNote(note);
+  const teacherId = requireActorId(actor);
+  const startsAt = parseMinute(startAt);
+  const endsAt = new Date(startsAt.getTime() + LESSON_DURATION_MINUTES * 60_000);
+
+  return runSerializableTransaction(async (tx) => {
+    await lock(tx, `lesson:${lessonId}`);
+    const lesson = await tx.lesson.findUnique({
+      where: { id: lessonId },
+      include: { participants: { select: { studentId: true } } },
+    });
+    if (!lesson) throw new SchedulingError('LESSON_NOT_FOUND');
+    if (lesson.teacherId !== teacherId) throw new SchedulingError('FORBIDDEN');
+    if (lesson.status !== 'scheduled') throw new SchedulingError('LESSON_NOT_EDITABLE');
+
+    const oldStudentIds = lesson.participants.map(({ studentId }) => studentId);
+    const lockedStudentIds = [...new Set([...oldStudentIds, ...studentIds])];
+    await lock(tx, `teacher:${teacherId}`);
+    await lockStudents(tx, lockedStudentIds);
+
+    const oldStudentIdSet = new Set(oldStudentIds);
+    const nextStudentIdSet = new Set(studentIds);
+    const lockedStudents = await tx.student.findMany({ where: { id: { in: lockedStudentIds } } });
+    const lockedStudentsById = new Map(lockedStudents.map((student) => [student.id, student]));
+    const students = studentIds.map((studentId) => lockedStudentsById.get(studentId)).filter(Boolean);
+    ensureSchedulableStudents(students, studentIds, oldStudentIdSet);
+    if (oldStudentIds.some((studentId) => (
+      !lockedStudentsById.has(studentId) || lockedStudentsById.get(studentId).reservedCredits < 1
+    ))) {
+      throw new SchedulingError('INVALID_RESERVATION');
+    }
+    if (await hasTimeConflict(tx, {
+      teacherId,
+      studentIds,
+      startsAt,
+      endsAt,
+      excludeLessonId: lessonId,
+    })) {
+      throw new SchedulingError('TIME_CONFLICT');
+    }
+
+    const removedStudentIds = oldStudentIds.filter((studentId) => !nextStudentIdSet.has(studentId));
+    const addedStudentIds = studentIds.filter((studentId) => !oldStudentIdSet.has(studentId));
+
+    for (const studentId of removedStudentIds) {
+      await tx.student.update({ where: { id: studentId }, data: { reservedCredits: { decrement: 1 } } });
+    }
+    for (const studentId of addedStudentIds) {
+      await tx.student.update({ where: { id: studentId }, data: { reservedCredits: { increment: 1 } } });
+    }
+
+    return tx.lesson.update({
+      where: { id: lessonId },
+      data: {
+        startsAt,
+        durationMinutes: LESSON_DURATION_MINUTES,
+        note: normalizedNote,
+        participants: {
+          ...(removedStudentIds.length && { deleteMany: { studentId: { in: removedStudentIds } } }),
+          ...(addedStudentIds.length && { create: addedStudentIds.map((studentId) => ({ studentId })) }),
+        },
+      },
+      include: { participants: true },
+    });
+  }, () => new SchedulingError('RETRYABLE_CONFLICT'));
 }
 
 export async function transitionLesson({ lessonId, action }, actor) {
   const teacherId = requireActorId(actor);
   if (!lessonId || !['complete', 'cancel'].includes(action)) throw new SchedulingError('INVALID_TRANSITION');
 
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     await lock(tx, `lesson:${lessonId}`);
     const lesson = await tx.lesson.findUnique({
       where: { id: lessonId },
@@ -151,7 +265,7 @@ export async function transitionLesson({ lessonId, action }, actor) {
       data: { status: action === 'complete' ? 'completed' : 'cancelled' },
       include: { participants: true },
     });
-  }, { isolationLevel: 'Serializable' });
+  }, () => new SchedulingError('RETRYABLE_CONFLICT'));
 }
 
 export { SchedulingError };
