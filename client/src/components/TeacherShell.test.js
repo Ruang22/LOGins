@@ -124,6 +124,25 @@ describe('ScheduleBoard', () => {
     expect(wrapper.emitted('open-teacher-order')).toHaveLength(1);
     expect(wrapper.emitted('confirm-manual-order')[0][0]).toBe('order-a');
   });
+
+  it('在连续导航轨道中移动激活指示，并保留当前页面语义', async () => {
+    const wrapper = mount(TeacherShell, {
+      props: {
+        students: [{ id: 'student-a', name: '林一', grade: 8, totalCredits: 8, attendedCredits: 1, reservedCredits: 1, isActive: true }],
+        orders: [{ id: 'order-a', student: { name: '林一' }, packageName: '冲刺课时包', creditQuantity: 6, amountCents: 128000, status: 'pending', paymentMode: 'manual_qr' }],
+      },
+    });
+
+    const navigation = wrapper.get('.teacher-nav');
+    expect(navigation.attributes('data-active-view')).toBe('today');
+    expect(navigation.attributes('style')).toContain('--teacher-nav-index: 0');
+
+    await wrapper.findAll('.teacher-nav button').find((button) => button.text().includes('学员')).trigger('click');
+
+    expect(navigation.attributes('data-active-view')).toBe('students');
+    expect(navigation.attributes('style')).toContain('--teacher-nav-index: 2');
+    expect(wrapper.get('h1').text()).toContain('学员课时名单');
+  });
 });
 
 afterEach(() => vi.useRealTimers());

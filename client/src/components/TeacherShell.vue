@@ -36,6 +36,7 @@ const emit = defineEmits([
 const title = ref(null);
 const activeView = ref('today');
 const aiOpen = ref(false);
+const activeNavIndex = computed(() => ({ today: 0, schedule: 1, students: 2, orders: 3 }[activeView.value] ?? 0));
 const activeStudents = computed(() => props.students.filter(({ isActive }) => isActive !== false));
 const available = (student) => student.totalCredits - student.attendedCredits - student.reservedCredits;
 const money = (cents) => new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(cents / 100);
@@ -157,11 +158,16 @@ defineExpose({ focus });
       </section>
     </div>
 
-    <nav class="teacher-nav" aria-label="教师工作区">
-      <button type="button" :class="{ 'is-active': activeView === 'today' }" @click="activeView = 'today'"><span>今日</span><small>当前</small></button>
-      <button type="button" :class="{ 'is-active': activeView === 'schedule' }" @click="activeView = 'schedule'"><span>课表</span><small>逐日</small></button>
-      <button type="button" :class="{ 'is-active': activeView === 'students' }" @click="activeView = 'students'"><span>学员</span><small>{{ activeStudents.length }} 名</small></button>
-      <button type="button" :class="{ 'is-active': activeView === 'orders' }" @click="activeView = 'orders'"><span>订单</span><small>{{ orders.length }} 条</small></button>
+    <nav
+      class="teacher-nav"
+      aria-label="教师工作区"
+      :data-active-view="activeView"
+      :style="{ '--teacher-nav-index': activeNavIndex, '--teacher-nav-offset': `${activeNavIndex * 100}%` }"
+    >
+      <button type="button" :class="{ 'is-active': activeView === 'today' }" :aria-current="activeView === 'today' ? 'page' : undefined" @click="activeView = 'today'"><span>今日</span><small>当前</small></button>
+      <button type="button" :class="{ 'is-active': activeView === 'schedule' }" :aria-current="activeView === 'schedule' ? 'page' : undefined" @click="activeView = 'schedule'"><span>课表</span><small>逐日</small></button>
+      <button type="button" :class="{ 'is-active': activeView === 'students' }" :aria-current="activeView === 'students' ? 'page' : undefined" @click="activeView = 'students'"><span>学员</span><small>{{ activeStudents.length }} 名</small></button>
+      <button type="button" :class="{ 'is-active': activeView === 'orders' }" :aria-current="activeView === 'orders' ? 'page' : undefined" @click="activeView = 'orders'"><span>订单</span><small>{{ orders.length }} 条</small></button>
     </nav>
 
     <button class="teacher-manual-action" data-testid="open-manual-schedule" type="button" @click="emit('open-manual-schedule', $event)">手动排课</button>
