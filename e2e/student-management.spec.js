@@ -3,7 +3,7 @@ import { test } from './fixtures.mjs';
 
 const teacherAccount = {
   id: 'e2e-teacher',
-  name: 'Maya Chen (Demo Teacher)',
+  name: '崔欣（演示教师）',
 };
 
 async function selectTeacherAccount(page) {
@@ -133,7 +133,7 @@ test('390px teacher student and order management use readable cards without inte
   expect(await list.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(
     await list.evaluate((element) => element.clientWidth),
   );
-  const studentRow = list.locator('.teacher-list__row').filter({ hasText: 'Avery Rivera (Demo Student)' });
+  const studentRow = list.locator('.teacher-list__row').filter({ hasText: '刘丽（演示学员）' });
   await expect(studentRow).toContainText('使用中');
   await expect(studentRow).toContainText('9 节');
   await expect(studentRow).toContainText('3 节');
@@ -141,7 +141,7 @@ test('390px teacher student and order management use readable cards without inte
   await expect(manage).toBeInViewport();
   await manage.click();
   const studentDialog = page.getByRole('dialog', { name: '学员管理' });
-  const managedRow = studentDialog.locator('.workflow-manager__row').filter({ hasText: 'Avery Rivera (Demo Student)' });
+  const managedRow = studentDialog.locator('.workflow-manager__row').filter({ hasText: '刘丽（演示学员）' });
   await expect(managedRow.getByRole('button', { name: '编辑' })).toBeInViewport();
   await expect(managedRow.getByRole('button', { name: '停用' })).toBeInViewport();
   await studentDialog.getByRole('button', { name: '关闭学员管理' }).click();
@@ -152,7 +152,7 @@ test('390px teacher student and order management use readable cards without inte
     await list.evaluate((element) => element.clientWidth),
   );
   const orderRow = list.locator('.teacher-list__row--orders').filter({ hasText: '390px 可见课程包' });
-  await expect(orderRow).toContainText('Avery Rivera (Demo Student)');
+  await expect(orderRow).toContainText('刘丽（演示学员）');
   await expect(orderRow).toContainText('4 节');
   await expect(orderRow).toContainText('¥199.50');
   await expect(orderRow).toContainText('待确认');

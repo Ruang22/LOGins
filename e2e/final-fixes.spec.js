@@ -5,11 +5,11 @@ test.use({ timezoneId: 'UTC' });
 
 const accounts = {
   teacher: {
-    first: { id: 'e2e-teacher', name: 'Maya Chen (Demo Teacher)' },
-    second: { id: 'e2e-teacher-other', name: 'Noah Li (Other Demo Teacher)' },
+    first: { id: 'e2e-teacher', name: '崔欣（演示教师）' },
+    second: { id: 'e2e-teacher-other', name: '周老师（另一位演示教师）' },
   },
   parent: {
-    first: { id: 'e2e-parent-demo', name: 'Jordan Rivera (Demo Parent)' },
+    first: { id: 'e2e-parent-demo', name: '李女士（演示家长）' },
     second: { id: 'e2e-parent-foreign', name: 'Foreign Parent (Synthetic Record)' },
   },
 };
@@ -51,7 +51,7 @@ test('teacher-to-teacher switching removes the previous schedule and failed acco
   await page.goto('/');
   await chooseAccount(page, 'teacher', accounts.teacher.first);
   await createLesson(page);
-  await expect(page.getByTestId('schedule-row')).toContainText('Avery Rivera (Demo Student)');
+  await expect(page.getByTestId('schedule-row')).toContainText('刘丽（演示学员）');
 
   await switchRole(page);
   await chooseAccount(page, 'teacher', accounts.teacher.second);
@@ -69,12 +69,12 @@ test('teacher-to-teacher switching removes the previous schedule and failed acco
 test('parent-to-parent switching replaces the child trajectory instead of retaining the previous account', async ({ page }) => {
   await page.goto('/');
   await chooseAccount(page, 'parent', accounts.parent.first);
-  await expect(page.getByRole('heading', { name: /Avery Rivera.*课程轨迹/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /刘丽.*课程轨迹/ })).toBeVisible();
 
   await switchRole(page);
   await chooseAccount(page, 'parent', accounts.parent.second);
   await expect(page.getByRole('heading', { name: /Foreign Child.*课程轨迹/ })).toBeVisible();
-  await expect(page.getByText('Avery Rivera (Demo Student)')).toHaveCount(0);
+  await expect(page.getByText('刘丽（演示学员）')).toHaveCount(0);
 });
 
 test('teacher-parent switching clears the AI draft and never carries role-specific content across', async ({ page }) => {
@@ -86,7 +86,7 @@ test('teacher-parent switching clears the AI draft and never carries role-specif
   await switchRole(page);
   await chooseAccount(page, 'parent', accounts.parent.first);
   await expect(page.getByText('不得跨角色保留的教师草稿')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: /Avery Rivera.*课程轨迹/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /刘丽.*课程轨迹/ })).toBeVisible();
 
   await switchRole(page);
   await chooseAccount(page, 'teacher', accounts.teacher.first);
@@ -169,10 +169,10 @@ test('UTC browser shows Beijing 18:05 and stale drawer writes fail accessibly wi
   await page.goto('/');
   await chooseAccount(page, 'teacher', accounts.teacher.first);
   const lesson = await createLesson(page, { date: '2032-05-02', note: '北京时间抽屉验收' });
-  const row = page.getByTestId('schedule-row').filter({ hasText: 'Avery Rivera (Demo Student)' });
+  const row = page.getByTestId('schedule-row').filter({ hasText: '刘丽（演示学员）' });
   await expect(row.getByTestId('schedule-time')).toHaveText('18:05');
   await row.click();
-  let drawer = page.getByRole('dialog', { name: /Avery Rivera/ });
+  let drawer = page.getByRole('dialog', { name: /刘丽/ });
   await expect(drawer).toContainText('18:05');
 
   const completed = await page.request.patch(`/api/teacher/lessons/${lesson.id}`, {
@@ -194,7 +194,7 @@ test('UTC browser shows Beijing 18:05 and stale drawer writes fail accessibly wi
   await refresh;
   await expect(row).toContainText('已完成');
   await row.click();
-  drawer = page.getByRole('dialog', { name: /Avery Rivera/ });
+  drawer = page.getByRole('dialog', { name: /刘丽/ });
   await expect(drawer.getByRole('button', { name: '编辑课程' })).toHaveCount(0);
   await expect(drawer.getByRole('button', { name: '取消预约' })).toHaveCount(0);
   await expect(drawer.getByRole('button', { name: '标记为已完成' })).toHaveCount(0);

@@ -3,7 +3,7 @@ import { test } from './fixtures.mjs';
 
 const teacherAccount = {
   id: 'e2e-teacher',
-  name: 'Maya Chen (Demo Teacher)',
+  name: '崔欣（演示教师）',
 };
 
 async function selectTeacherWorkbench(page) {
@@ -92,7 +92,7 @@ test('teacher schedules a minute-precise one-hour lesson at 18:05 through Expres
   }));
 
   await expect(page.getByRole('status')).toHaveText('手动排课已保存。');
-  const row = page.getByTestId('schedule-row').filter({ hasText: 'Avery Rivera (Demo Student)' });
+  const row = page.getByTestId('schedule-row').filter({ hasText: '刘丽（演示学员）' });
   await expect(row.getByTestId('schedule-time')).toHaveText('18:05');
   await expect(row).toContainText('60 分钟');
   await expect(row).toContainText('已排课');
@@ -109,7 +109,7 @@ test('teacher schedules a same-grade group through the backend validation path',
   });
   expect(response.status()).toBe(201);
   await expect(page.getByRole('status')).toHaveText('手动排课已保存。');
-  await expect(page.getByTestId('schedule-row')).toContainText('Avery Rivera (Demo Student)、Rowan Rivera (Demo Student)');
+  await expect(page.getByTestId('schedule-row')).toContainText('刘丽（演示学员）、王然（演示学员）');
 });
 
 test('teacher receives the real TIME_CONFLICT rejection without adding a second lesson', async ({ page }) => {
@@ -155,11 +155,11 @@ test('keyboard users stay in the lesson dialog and return to its trigger after c
   await selectTeacherWorkbench(page);
   expect((await saveManualLesson(page, { date: '2032-03-04', note: '键盘验收课程' })).status()).toBe(201);
 
-  const trigger = page.getByTestId('schedule-row').filter({ hasText: 'Avery Rivera (Demo Student)' });
+  const trigger = page.getByTestId('schedule-row').filter({ hasText: '刘丽（演示学员）' });
   await trigger.focus();
   await page.keyboard.press('Enter');
 
-  const dialog = page.getByRole('dialog', { name: /Avery Rivera/ });
+  const dialog = page.getByRole('dialog', { name: /刘丽/ });
   const close = dialog.getByRole('button', { name: '关闭课程详情' });
   const complete = dialog.getByRole('button', { name: '标记为已完成' });
   await expect(dialog).toHaveAttribute('aria-modal', 'true');

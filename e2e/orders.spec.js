@@ -1,8 +1,8 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures.mjs';
 
-const teacherAccount = { id: 'e2e-teacher', name: 'Maya Chen (Demo Teacher)' };
-const parentAccount = { id: 'e2e-parent-demo', name: 'Jordan Rivera (Demo Parent)' };
+const teacherAccount = { id: 'e2e-teacher', name: '崔欣（演示教师）' };
+const parentAccount = { id: 'e2e-parent-demo', name: '李女士（演示家长）' };
 
 async function selectTeacherWorkbench(page) {
   const accountsResponse = page.waitForResponse((response) => (
@@ -88,8 +88,8 @@ test('teacher creates and confirms manual QR, then the parent sees only their si
   await page.getByRole('button', { name: '切换身份' }).click();
   await selectParentWorkbench(page);
 
-  await expect(page.getByRole('heading', { name: /Avery Rivera.*课程轨迹/ })).toBeVisible();
-  await expect(page.getByText('Rowan Rivera (Demo Student)')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: /刘丽.*课程轨迹/ })).toBeVisible();
+  await expect(page.getByText('王然（演示学员）')).toHaveCount(0);
   const orderHistory = page.getByTestId('order-trail').locator('li').filter({ hasText: 'E2E 线下扫码包' });
   await expect(orderHistory).toContainText('4 节');
   await expect(orderHistory).toContainText('扫码登记（模拟）');
@@ -148,7 +148,7 @@ test('parent cannot access a supplied foreign child id and the dashboard cannot 
   expect(body.students).toHaveLength(1);
   expect(body.students.map(({ id }) => id)).not.toContain('e2e-foreign-child');
 
-  await expect(page.getByText('Avery Rivera (Demo Student)')).toBeVisible();
+  await expect(page.getByText('刘丽（演示学员）')).toBeVisible();
   await expect(page.getByText('Foreign Child (Synthetic Record)')).toHaveCount(0);
   await expect(page.getByText('只显示当前家长账户的第一位孩子')).toBeVisible();
 });

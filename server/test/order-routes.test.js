@@ -179,7 +179,7 @@ test('teacher manual order route uses catalog facts and rejects parent access', 
   createdOrderIds.push(created.body.id);
   assert.deepEqual(
     { packageName: created.body.packageName, creditQuantity: created.body.creditQuantity, amountCents: created.body.amountCents },
-    { packageName: 'Demo 10 Lesson Package', creditQuantity: 10, amountCents: 50000 },
+    { packageName: '10 节课程包', creditQuantity: 10, amountCents: 50000 },
   );
 
   await request(app)

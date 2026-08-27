@@ -24,7 +24,7 @@ test('teacher workspace exposes labeled landmarks, a visible focus indicator, an
   const accountGate = page.getByTestId('account-gate');
   await expect(accountGate).toBeVisible();
   await expect(page.getByRole('heading', { name: '选择教师账户' })).toBeVisible();
-  await accountGate.getByRole('button').filter({ hasText: 'Maya Chen (Demo Teacher)' }).click();
+  await accountGate.getByRole('button').filter({ hasText: '崔欣（演示教师）' }).click();
 
   await expect(page.getByTestId('teacher-shell')).toBeVisible();
   await expect(page.getByTestId('role-gate')).toHaveCount(0);
@@ -79,7 +79,7 @@ test.describe('mobile release checks', () => {
       buttons.map((button) => button.getBoundingClientRect().height)
     ));
     expect(accountTargetHeights.every((height) => height >= 44)).toBeTruthy();
-    await accountGate.getByRole('button').filter({ hasText: 'Jordan Rivera (Demo Parent)' }).click();
+    await accountGate.getByRole('button').filter({ hasText: '李女士（演示家长）' }).click();
 
     await expect(page.getByTestId('parent-shell')).toBeVisible();
     await expect(page.getByTestId('role-gate')).toHaveCount(0);

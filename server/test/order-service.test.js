@@ -112,7 +112,7 @@ test('uses catalog facts instead of client-supplied package price and credits', 
   createdIds.orders.push(order.id);
   assert.deepEqual(
     { packageId: order.packageId, packageName: order.packageName, creditQuantity: order.creditQuantity, amountCents: order.amountCents },
-    { packageId: 'demo-10', packageName: 'Demo 10 Lesson Package', creditQuantity: 10, amountCents: 50000 },
+    { packageId: 'demo-10', packageName: '10 节课程包', creditQuantity: 10, amountCents: 50000 },
   );
 });
 
@@ -198,7 +198,7 @@ test('teacher manual orders use catalog facts and cannot be confirmed by another
       creditQuantity: catalogOrder.creditQuantity,
       amountCents: catalogOrder.amountCents,
     },
-    { packageId: 'demo-20', packageName: 'Demo 20 Lesson Package', creditQuantity: 20, amountCents: 92000 },
+    { packageId: 'demo-20', packageName: '20 节课程包', creditQuantity: 20, amountCents: 92000 },
   );
 
   await assert.rejects(
