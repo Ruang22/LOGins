@@ -260,10 +260,10 @@ async function purchase(option) {
     if (isCurrentEpoch(epoch)) loading.value = false;
   }
 }
-async function simulatePayment() {
+async function simulatePayment(orderId) {
+  if (!orderId) return;
   const epoch = accountEpoch;
   const expectedAccountId = accountId.value;
-  const orderId = parent.value.order.id;
   loading.value = true;
   try {
     const order = await api.parent.simulatePayment(orderId, expectedAccountId);
@@ -384,7 +384,6 @@ onMounted(() => {
       v-else
       ref="workbenchDestination"
       :dashboard="parent.data"
-      :pending-order="parent.order"
       :loading="loading"
       @refresh="loadParent"
       @purchase="purchase"

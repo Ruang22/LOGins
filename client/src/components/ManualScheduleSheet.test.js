@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest';
 import ManualScheduleSheet from './ManualScheduleSheet.vue';
 
 const students = [
-  { id: 'student-a', name: '林一', grade: 8, isActive: true },
-  { id: 'student-b', name: '周然', grade: 8, isActive: true },
-  { id: 'student-c', name: '赵宁', grade: 9, isActive: true },
+  { id: 'student-a', name: '林一', grade: 8, totalCredits: 12, attendedCredits: 2, reservedCredits: 1, isActive: true },
+  { id: 'student-b', name: '周然', grade: 8, totalCredits: 8, attendedCredits: 0, reservedCredits: 0, isActive: true },
+  { id: 'student-c', name: '赵宁', grade: 9, totalCredits: 6, attendedCredits: 1, reservedCredits: 0, isActive: true },
 ];
 
 describe('ManualScheduleSheet', () => {
@@ -36,6 +36,17 @@ describe('ManualScheduleSheet', () => {
 
     expect(wrapper.get('[data-testid="student-student-b"]').attributes('disabled')).toBeUndefined();
     expect(wrapper.get('[data-testid="student-student-c"]').attributes('disabled')).toBeDefined();
+  });
+
+  it('将已选学员、年级和可用课时直接呈现在选择区域', async () => {
+    const wrapper = mount(ManualScheduleSheet, { props: { students } });
+
+    await wrapper.get('[data-testid="student-student-a"]').setValue(true);
+
+    expect(wrapper.get('[data-testid="selected-student-summary"]').text()).toContain('已选 1 人');
+    expect(wrapper.get('[data-testid="selected-student-summary"]').text()).toContain('8 年级');
+    expect(wrapper.get('[data-testid="student-balance-student-a"]').text()).toBe('可用 9 节');
+    expect(wrapper.get('[data-testid="student-student-c"]').element.closest('label')?.textContent).toContain('不同年级不可同课');
   });
 
   it('编辑时复用表单并关闭于 Escape', async () => {

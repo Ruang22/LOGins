@@ -98,6 +98,30 @@ test('teacher schedules a minute-precise one-hour lesson at 18:05 through Expres
   await expect(row).toContainText('已排课');
 });
 
+test('manual schedule uses a compact desktop panel and a touch-ready mobile sheet', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/');
+  await selectTeacherWorkbench(page);
+
+  let dialog = await openManualSchedule(page);
+  expect(await dialog.evaluate((element) => element.getBoundingClientRect().width)).toBeLessThanOrEqual(920);
+  await expect(dialog.getByTestId('selected-student-summary')).toHaveText('可选择同年级学员一起上课');
+  await dialog.getByTestId('student-e2e-avery').check();
+  await expect(dialog.getByTestId('selected-student-summary')).toHaveText('已选 1 人 · 8 年级');
+  await expect(dialog.getByTestId('student-balance-e2e-avery')).toHaveText('可用 9 节');
+  await page.screenshot({ path: testInfo.outputPath('manual-schedule-desktop.png') });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  dialog = page.getByRole('dialog', { name: '手动排课' });
+  await expect(dialog.getByRole('button', { name: '保存课程' })).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  const actionHeights = await dialog.locator('.workflow-sheet__actions button').evaluateAll((buttons) => (
+    buttons.map((button) => button.getBoundingClientRect().height)
+  ));
+  expect(actionHeights.every((height) => height >= 44)).toBeTruthy();
+  await page.screenshot({ path: testInfo.outputPath('manual-schedule-mobile.png') });
+});
+
 test('teacher schedules a same-grade group through the backend validation path', async ({ page }) => {
   await page.goto('/');
   await selectTeacherWorkbench(page);

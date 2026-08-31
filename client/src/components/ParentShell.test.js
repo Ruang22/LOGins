@@ -62,20 +62,47 @@ describe('ParentShell', () => {
     expect(wrapper.emitted('purchase')[0][0]).toBe(packageOption);
   });
 
-  it('有待支付订单时可继续模拟支付', async () => {
+  it('从订单历史恢复待支付模拟订单，并把订单编号交给支付动作', async () => {
     const pendingOrder = {
       id: 'order-1',
       status: 'pending',
       packageName: '进阶课程包',
       paymentMode: 'simulation',
+      creditQuantity: 8,
+      amountCents: 128000,
+      createdAt: '2026-08-22T09:30:00.000Z',
     };
     const wrapper = mount(ParentShell, {
-      props: { dashboard: dashboard({ students: [firstChild] }), pendingOrder },
+      props: { dashboard: dashboard({ students: [firstChild], orders: [pendingOrder] }) },
     });
 
-    await wrapper.get('[data-testid="simulate-payment"]').trigger('click');
+    await wrapper.get('[data-testid="simulate-payment-order-1"]').trigger('click');
 
     expect(wrapper.emitted('simulate-payment')).toHaveLength(1);
+    expect(wrapper.emitted('simulate-payment')[0]).toEqual(['order-1']);
+  });
+
+  it('以底部导航将老师寄语、教育套餐和排课信息分成互不混排的页面', async () => {
+    const wrapper = mount(ParentShell, { props: { dashboard: dashboard({ students: [firstChild] }) } });
+
+    expect(wrapper.get('[data-testid="parent-bottom-navigation"]').attributes('aria-label')).toBe('家长端导航');
+    expect(wrapper.get('[data-testid="parent-nav-indicator"]').attributes('aria-hidden')).toBe('true');
+    expect(wrapper.get('[data-testid="parent-bottom-navigation"]').attributes('style')).toContain('--parent-nav-index: 0');
+    expect(wrapper.get('[data-testid="parent-schedule-page"]').attributes('style') ?? '').not.toContain('display: none');
+    expect(wrapper.get('[data-testid="parent-message-page"]').attributes('style')).toContain('display: none');
+    expect(wrapper.get('[data-testid="parent-packages-page"]').attributes('style')).toContain('display: none');
+
+    await wrapper.get('[data-testid="parent-tab-message"]').trigger('click');
+    expect(wrapper.get('[data-testid="parent-message-page"]').attributes('style') ?? '').not.toContain('display: none');
+    expect(wrapper.get('[data-testid="parent-schedule-page"]').attributes('style')).toContain('display: none');
+    expect(wrapper.get('[data-testid="parent-tab-message"]').attributes('aria-current')).toBe('page');
+    expect(wrapper.get('[data-testid="parent-bottom-navigation"]').attributes('style')).toContain('--parent-nav-index: 1');
+
+    await wrapper.get('[data-testid="parent-tab-packages"]').trigger('click');
+    expect(wrapper.get('[data-testid="parent-packages-page"]').attributes('style') ?? '').not.toContain('display: none');
+    expect(wrapper.get('[data-testid="parent-message-page"]').attributes('style')).toContain('display: none');
+    expect(wrapper.get('[data-testid="parent-tab-packages"]').attributes('aria-current')).toBe('page');
+    expect(wrapper.get('[data-testid="parent-bottom-navigation"]').attributes('style')).toContain('--parent-nav-index: 2');
   });
 
   it('按创建时间从新到旧在线性订单轨迹中展示套餐、课时、金额、状态和创建时间', () => {

@@ -134,6 +134,7 @@ describe('ScheduleBoard', () => {
     });
 
     const navigation = wrapper.get('.teacher-nav');
+    expect(wrapper.find('[data-testid="teacher-nav-indicator"]').exists()).toBe(true);
     expect(navigation.attributes('data-active-view')).toBe('today');
     expect(navigation.attributes('style')).toContain('--teacher-nav-index: 0');
 
@@ -142,6 +143,15 @@ describe('ScheduleBoard', () => {
     expect(navigation.attributes('data-active-view')).toBe('students');
     expect(navigation.attributes('style')).toContain('--teacher-nav-index: 2');
     expect(wrapper.get('h1').text()).toContain('学员课时名单');
+  });
+
+  it('切换到订单时让教师端滑动指示跟随到第四个位置', async () => {
+    const wrapper = mount(TeacherShell, { props: { students: [], orders: [] } });
+
+    await wrapper.findAll('.teacher-nav button').find((button) => button.text().includes('订单')).trigger('click');
+
+    expect(wrapper.get('.teacher-nav').attributes('style')).toContain('--teacher-nav-index: 3');
+    expect(wrapper.get('[data-testid="teacher-nav-indicator"]').attributes('aria-hidden')).toBe('true');
   });
 });
 

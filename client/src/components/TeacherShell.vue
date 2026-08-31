@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import { formatBusinessDate } from '../business-time.js';
 import AiSchedulePreview from './AiSchedulePreview.vue';
 import ScheduleBoard from './ScheduleBoard.vue';
@@ -35,6 +35,7 @@ const emit = defineEmits([
 
 const title = ref(null);
 const activeView = ref('today');
+const viewDirection = ref('forward');
 const aiOpen = ref(false);
 const activeNavIndex = computed(() => ({ today: 0, schedule: 1, students: 2, orders: 3 }[activeView.value] ?? 0));
 const activeStudents = computed(() => props.students.filter(({ isActive }) => isActive !== false));
@@ -52,6 +53,14 @@ function focus() {
 function openAi() {
   aiOpen.value = !aiOpen.value;
   emit('open-ai');
+}
+
+function selectView(nextView) {
+  if (nextView === activeView.value) return;
+  const nextIndex = ({ today: 0, schedule: 1, students: 2, orders: 3 }[nextView] ?? 0);
+  viewDirection.value = nextIndex > activeNavIndex.value ? 'forward' : 'backward';
+  activeView.value = nextView;
+  nextTick(() => title.value?.focus());
 }
 
 defineExpose({ focus });
@@ -83,6 +92,8 @@ defineExpose({ focus });
       <p v-if="error" class="teacher-message teacher-message--error" role="alert">{{ error }}</p>
       <p v-if="notice" class="teacher-message teacher-message--notice" role="status">{{ notice }}</p>
 
+      <Transition :name="`teacher-page-${viewDirection}`" mode="out-in">
+      <section :key="activeView" class="teacher-view">
       <template v-if="activeView === 'today' || activeView === 'schedule'">
         <div class="teacher-shell__schedule-actions">
           <p>每行是一节课。轻触课程可查看、完成或取消。</p>
@@ -156,6 +167,8 @@ defineExpose({ focus });
         </div>
         <p v-if="!orders.length" class="teacher-list__empty">尚未创建模拟订单。</p>
       </section>
+      </section>
+      </Transition>
     </div>
 
     <nav
@@ -164,10 +177,11 @@ defineExpose({ focus });
       :data-active-view="activeView"
       :style="{ '--teacher-nav-index': activeNavIndex, '--teacher-nav-offset': `${activeNavIndex * 100}%` }"
     >
-      <button type="button" :class="{ 'is-active': activeView === 'today' }" :aria-current="activeView === 'today' ? 'page' : undefined" @click="activeView = 'today'"><span>今日</span><small>当前</small></button>
-      <button type="button" :class="{ 'is-active': activeView === 'schedule' }" :aria-current="activeView === 'schedule' ? 'page' : undefined" @click="activeView = 'schedule'"><span>课表</span><small>逐日</small></button>
-      <button type="button" :class="{ 'is-active': activeView === 'students' }" :aria-current="activeView === 'students' ? 'page' : undefined" @click="activeView = 'students'"><span>学员</span><small>{{ activeStudents.length }} 名</small></button>
-      <button type="button" :class="{ 'is-active': activeView === 'orders' }" :aria-current="activeView === 'orders' ? 'page' : undefined" @click="activeView = 'orders'"><span>订单</span><small>{{ orders.length }} 条</small></button>
+      <span class="teacher-nav__indicator" data-testid="teacher-nav-indicator" aria-hidden="true"></span>
+      <button type="button" :class="{ 'is-active': activeView === 'today' }" :aria-current="activeView === 'today' ? 'page' : undefined" @click="selectView('today')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h14v15H5zM8 2.5v4M16 2.5v4M5 9h14M8 13h3M8 16.5h6" /></svg><span>今日</span></button>
+      <button type="button" :class="{ 'is-active': activeView === 'schedule' }" :aria-current="activeView === 'schedule' ? 'page' : undefined" @click="selectView('schedule')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5h15v14h-15zM8 9h8M8 13h8M8 17h5" /></svg><span>课表</span></button>
+      <button type="button" :class="{ 'is-active': activeView === 'students' }" :aria-current="activeView === 'students' ? 'page' : undefined" @click="selectView('students')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM15.5 12a2.5 2.5 0 1 0 0-5M3.5 19c.5-3.2 2.2-4.8 5-4.8s4.5 1.6 5 4.8M14 14.8c2.8.1 4.5 1.5 5 4.2" /></svg><span>学员</span></button>
+      <button type="button" :class="{ 'is-active': activeView === 'orders' }" :aria-current="activeView === 'orders' ? 'page' : undefined" @click="selectView('orders')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h14v15H5zM8 9h8M8 13h8M8 17h4" /></svg><span>订单</span></button>
     </nav>
 
     <button class="teacher-manual-action" data-testid="open-manual-schedule" type="button" @click="emit('open-manual-schedule', $event)">手动排课</button>

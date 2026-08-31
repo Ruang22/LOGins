@@ -116,8 +116,11 @@ test('parent completes a visibly simulated package order through Express and see
   await expect(page.getByText('模拟支付 · 演示数据')).toBeVisible();
   await expect(page.getByTestId('package-demo-10')).toContainText('选择此套餐');
   await page.getByTestId('package-demo-10').click();
-  await expect(page.getByText('等待模拟支付')).toBeVisible();
-  await page.getByTestId('simulate-payment').click();
+  await expect(page.getByRole('button', { name: '继续模拟支付' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId('parent-shell')).toBeVisible();
+  await expect(page.getByRole('button', { name: '继续模拟支付' })).toBeVisible();
+  await page.getByRole('button', { name: '继续模拟支付' }).click();
 
   await expect(page.getByRole('status')).toContainText('模拟付款已完成');
   await expect(page.getByTestId('purchased-credits')).toHaveText('22');
